@@ -108,7 +108,7 @@ export default function TrailDetailScreen({ sentier, collected = [], onStart, on
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl flex-shrink-0 border-2 ${
                     done ? 'border-adventure-gold bg-adventure-gold/20' : 'border-parchment-300 bg-parchment-200'
                   }`}>
-                    {done ? '✅' : (CATEGORY_EMOJI[mission.categorie] || '❓')}
+                    {done ? '✅' : (mission.icone || CATEGORY_EMOJI[mission.categorie] || '❓')}
                   </div>
 
                   <div className="flex-1 min-w-0">

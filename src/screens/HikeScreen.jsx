@@ -6,8 +6,8 @@ import { distanceMetres } from '../lib/geo'
 
 const CATEGORY_EMOJI = { Plante: '🌿', Animal: '🦌', 'Géologie': '🪨', 'Point de vue': '🏔️' }
 
-function missionIcon(done, categorie) {
-  const emoji = done ? '✅' : (CATEGORY_EMOJI[categorie] || '🎯')
+function missionIcon(done, mission) {
+  const emoji = done ? '✅' : (mission.icone || CATEGORY_EMOJI[mission.categorie] || '🎯')
   return L.divIcon({
     className: 'mission-marker-icon',
     html: `<div style="
@@ -179,7 +179,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
           <Marker
             key={mission.id}
             position={[mission.lat, mission.lng]}
-            icon={missionIcon(collected.includes(mission.id), mission.categorie)}
+            icon={missionIcon(collected.includes(mission.id), mission)}
           />
         ))}
       </MapContainer>
@@ -194,7 +194,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
         <div className="absolute bottom-6 left-4 right-4 z-30 nearby-pulse">
           <div className="bg-adventure-brown rounded-2xl p-4 shadow-2xl border-4 border-adventure-gold font-body">
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-4xl">{CATEGORY_EMOJI[nearbyMission.categorie] || '🎯'}</span>
+              <span className="text-4xl">{nearbyMission.icone || CATEGORY_EMOJI[nearbyMission.categorie] || '🎯'}</span>
               <div>
                 <p className="text-parchment-200 font-bold text-sm">Mission à proximité !</p>
                 <p className="text-parchment-300 text-xs">{nearbyMission.categorie}</p>

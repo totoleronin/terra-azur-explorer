@@ -1,30 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Circle, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { distanceMetres } from '../lib/geo'
 
 const CATEGORY_EMOJI = { Plante: '🌿', Animal: '🦌', 'Géologie': '🪨', 'Point de vue': '🏔️' }
 
-// Marqueur mission (point d'interrogation si non fait, check si fait)
-function missionIcon(done) {
+function missionIcon(done, categorie) {
+  const emoji = done ? '✅' : (CATEGORY_EMOJI[categorie] || '🎯')
   return L.divIcon({
     className: 'mission-marker-icon',
     html: `<div style="
-      width:38px; height:38px;
+      width:40px; height:40px;
       background: ${done ? '#3A5A2A' : '#8B6914'};
       border: 3px solid white;
       border-radius: 50%;
       display:flex; align-items:center; justify-content:center;
-      font-size:18px;
+      font-size:20px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    ">${done ? '✅' : '❓'}</div>`,
-    iconSize: [38, 38],
-    iconAnchor: [19, 19],
+    ">${emoji}</div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
   })
 }
 
-// Marqueur position utilisateur
 const userIcon = L.divIcon({
   className: 'mission-marker-icon',
   html: `<div style="
@@ -38,7 +37,52 @@ const userIcon = L.divIcon({
   iconAnchor: [11, 11],
 })
 
-// Recentre la carte sur la position GPS
+function arrowIcon(deg) {
+  return L.divIcon({
+    className: 'mission-marker-icon',
+    html: `<div style="
+      width:20px; height:20px;
+      display:flex; align-items:center; justify-content:center;
+      transform:rotate(${deg}deg);
+      color:#8B6914; font-size:14px; opacity:0.85;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
+    ">▲</div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  })
+}
+
+function calcBearing(p1, p2) {
+  const toRad = x => x * Math.PI / 180
+  const dLng = toRad(p2[1] - p1[1])
+  const lat1 = toRad(p1[0]), lat2 = toRad(p2[0])
+  const y = Math.sin(dLng) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+}
+
+function RouteLayer({ coords }) {
+  if (!coords || coords.length < 2) return null
+
+  // 3 flèches réparties sur le tracé
+  const arrows = [0.25, 0.5, 0.75].map(frac => {
+    const idx = Math.floor(frac * (coords.length - 2))
+    return { pos: coords[idx], deg: calcBearing(coords[idx], coords[idx + 1]) }
+  })
+
+  return (
+    <>
+      <Polyline
+        positions={coords}
+        pathOptions={{ color: '#8B6914', weight: 4, opacity: 0.75, dashArray: null }}
+      />
+      {arrows.map((a, i) => (
+        <Marker key={i} position={a.pos} icon={arrowIcon(a.deg)} />
+      ))}
+    </>
+  )
+}
+
 function RecenterMap({ position }) {
   const map = useMap()
   const hasCentered = useRef(false)
@@ -58,33 +102,30 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
 
   const completedCount = missions.filter(m => collected.includes(m.id)).length
 
-  // Surveille la position GPS
+  // Route : depuis Supabase ou fallback sur les points de mission dans l'ordre
+  const routeCoords = sentier.route_coords ||
+    missions.map(m => [m.lat, m.lng]).concat(
+      missions.length ? [[missions[0].lat, missions[0].lng]] : []
+    )
+
   useEffect(() => {
     if (!navigator.geolocation) return
-
     watchRef.current = navigator.geolocation.watchPosition(
       pos => {
         const { latitude: lat, longitude: lng } = pos.coords
         setUserPos([lat, lng])
-
-        // Vérifie si on est proche d'une mission non complétée
         const found = missions.find(m => {
           if (collected.includes(m.id)) return false
-          const dist = distanceMetres(lat, lng, m.lat, m.lng)
-          return dist <= (m.rayon_metres || 50)
+          return distanceMetres(lat, lng, m.lat, m.lng) <= (m.rayon_metres || 50)
         })
         setNearbyMission(found || null)
       },
       err => console.warn('GPS:', err),
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
     )
-
-    return () => {
-      if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current)
-    }
+    return () => { if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current) }
   }, [missions, collected])
 
-  // Position de démo si pas de GPS (pour tester en dev)
   const mapCenter = userPos || [sentier.lat_depart, sentier.lng_depart]
 
   return (
@@ -96,18 +137,15 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
         <button
           onClick={onBack}
           className="bg-white/20 text-white rounded-full w-9 h-9 flex items-center justify-center text-lg backdrop-blur-sm flex-shrink-0"
-        >
-          ←
-        </button>
+        >←</button>
         <div className="flex-1 min-w-0">
           <p className="font-adventure text-parchment-200 text-base leading-tight truncate">
             {sentier.nom}
           </p>
           <p className="text-parchment-300 text-xs font-body">
-            🎯 {completedCount} / {missions.length} missions
+            🎯 {completedCount}/{missions.length} missions · 📏 {sentier.distance_km} km
           </p>
         </div>
-        {/* Barre de progression compacte */}
         <div className="w-20 bg-white/20 rounded-full h-2 flex-shrink-0">
           <div
             className="bg-adventure-gold h-2 rounded-full transition-all"
@@ -117,20 +155,15 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
       </div>
 
       {/* Carte */}
-      <MapContainer
-        center={mapCenter}
-        zoom={15}
-        zoomControl={false}
-        className="w-full h-full"
-      >
+      <MapContainer center={mapCenter} zoom={15} zoomControl={false} className="w-full h-full">
         <TileLayer
           attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
         <RecenterMap position={userPos} />
+        <RouteLayer coords={routeCoords} />
 
-        {/* Position utilisateur */}
         {userPos && (
           <>
             <Marker position={userPos} icon={userIcon} />
@@ -142,32 +175,26 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
           </>
         )}
 
-        {/* Marqueurs de mission */}
         {missions.map(mission => (
           <Marker
             key={mission.id}
             position={[mission.lat, mission.lng]}
-            icon={missionIcon(collected.includes(mission.id))}
+            icon={missionIcon(collected.includes(mission.id), mission.categorie)}
           />
         ))}
       </MapContainer>
 
-      {/* Pastille GPS non dispo */}
       {!userPos && (
         <div className="absolute top-20 left-4 right-4 z-30 bg-black/60 text-white text-xs text-center py-2 px-3 rounded-xl backdrop-blur-sm font-body">
           📍 En attente du signal GPS… (accepte la localisation si demandé)
         </div>
       )}
 
-
-      {/* Notification mission à proximité */}
       {nearbyMission && (
         <div className="absolute bottom-6 left-4 right-4 z-30 nearby-pulse">
           <div className="bg-adventure-brown rounded-2xl p-4 shadow-2xl border-4 border-adventure-gold font-body">
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-4xl">
-                {CATEGORY_EMOJI[nearbyMission.categorie] || '🎯'}
-              </span>
+              <span className="text-4xl">{CATEGORY_EMOJI[nearbyMission.categorie] || '🎯'}</span>
               <div>
                 <p className="text-parchment-200 font-bold text-sm">Mission à proximité !</p>
                 <p className="text-parchment-300 text-xs">{nearbyMission.categorie}</p>

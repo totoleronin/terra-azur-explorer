@@ -75,8 +75,8 @@ export default function ExploreScreen({ onViewTrail }) {
 
       {/* Map */}
       <MapContainer
-        center={[43.5167, 6.8833]}
-        zoom={13}
+        center={[43.63, 7.01]}
+        zoom={10}
         zoomControl={false}
         className="w-full h-full"
       >

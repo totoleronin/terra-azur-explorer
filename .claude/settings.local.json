@@ -18,7 +18,8 @@
       "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/sentier-mont-vinaigre.jpg.png' public/illustrations/trails/mont-vinaigre.png)",
       "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-bouquetin.jpg.png' public/illustrations/missions/bouquetin.png)",
       "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-chene-liege.jpg.png' public/illustrations/missions/chene-liege.png)",
-      "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-point-de-vue.jpg.png' public/illustrations/missions/sommet-vinaigre.png)"
+      "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-point-de-vue.jpg.png' public/illustrations/missions/sommet-vinaigre.png)",
+      "Bash(git reset *)"
     ]
   }
 }

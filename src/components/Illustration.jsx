@@ -56,33 +56,34 @@ export function MissionIllustration({ mission, state = 'unlocked', className = '
     )
   }
 
-  // States
-  const stateStyles = {
-    locked: {
-      filter: 'grayscale(1) brightness(0.2)',
-      opacity: 0.6,
-    },
-    nearby: {
-      filter: 'grayscale(1) brightness(0.25) drop-shadow(0 0 14px rgba(255,140,60,0.7))',
-      opacity: 0.8,
-      animation: 'missionNearbyPulse 1.6s ease-in-out infinite',
-    },
-    unlocked: {
-      filter: 'none',
-      opacity: 1,
-      animation: 'missionReveal 1.5s ease-out both',
-    },
+  // Silhouette filter — same darkness for locked & nearby
+  const imgStyle = {
+    ...baseStyle,
+    ...(state === 'locked'
+      ? { filter: 'grayscale(1) brightness(0.25)', opacity: 0.7 }
+      : state === 'nearby'
+      ? { filter: 'grayscale(1) brightness(0.3)', opacity: 0.9 }
+      : { animation: 'missionReveal 1.5s ease-out both' }),
   }
-  const sStyle = stateStyles[state] || stateStyles.unlocked
 
   return (
-    <div className={`relative w-full h-full overflow-hidden ${className}`} style={style}>
+    <div
+      className={`relative w-full h-full overflow-hidden ${className}`}
+      style={style}
+    >
       <img
         src={src}
         alt={mission?.titre || 'mission'}
         onError={() => setErrored(true)}
-        style={{ ...baseStyle, ...sStyle, transition: 'filter .4s, opacity .4s' }}
+        style={imgStyle}
       />
+      {/* Nearby: animated orange glow overlay, separate from the img filter */}
+      {state === 'nearby' && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ animation: 'missionGlowPulse 1.4s ease-in-out infinite' }}
+        />
+      )}
       {state === 'locked' && (
         <div
           className="absolute inset-0 grid place-items-center pointer-events-none"

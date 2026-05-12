@@ -68,7 +68,7 @@ export default function MiniMap({ sentiers, trailStates, onPickTrail, height = 2
 
       {/* Legend */}
       <div
-        className="absolute left-2 bottom-2 flex items-center gap-2 px-2 py-1 rounded-md backdrop-blur-sm"
+        className="absolute left-2 bottom-2 z-[400] flex items-center gap-2 px-2 py-1 rounded-md backdrop-blur-sm"
         style={{
           background: 'rgba(244,236,216,0.92)',
           border: '1px solid #2b2620',
@@ -97,7 +97,7 @@ export default function MiniMap({ sentiers, trailStates, onPickTrail, height = 2
 
       {/* Top-right label */}
       <div
-        className="absolute right-2 top-2 px-2 py-1 rounded-md backdrop-blur-sm font-mono uppercase"
+        className="absolute right-2 top-2 z-[400] px-2 py-1 rounded-md backdrop-blur-sm font-mono uppercase"
         style={{
           background: 'rgba(244,236,216,0.92)',
           border: '1px solid #2b2620',

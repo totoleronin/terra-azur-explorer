@@ -27,6 +27,26 @@ export function useTrails() {
   return { sentiers, loading, error }
 }
 
+export function useAllMissions() {
+  const [missions, setMissions] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    async function load() {
+      try {
+        const { data, error } = await supabase.from('missions').select('id, sentier_id')
+        if (error) throw error
+        setMissions(data && data.length > 0 ? data : MISSIONS)
+      } catch {
+        setMissions(MISSIONS)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+  return { missions, loading }
+}
+
 export function useMissions(sentierId) {
   const [missions, setMissions] = useState([])
   const [loading, setLoading] = useState(true)

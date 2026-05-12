@@ -4,7 +4,21 @@
       "Bash(npm create *)",
       "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); Set-Location \"C:\\\\Users\\\\anton\\\\Desktop\\\\terra-azur-explorer\"; npm create vite@latest . -- --template react --yes 2>&1)",
       "mcp__Claude_Preview__preview_start",
-      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); Set-Location \"C:\\\\Users\\\\anton\\\\Desktop\\\\terra-azur-explorer\"; git init; git add .; git commit -m \"Initial commit — Terra Azur Explorer MVP\" 2>&1)"
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); Set-Location \"C:\\\\Users\\\\anton\\\\Desktop\\\\terra-azur-explorer\"; git init; git add .; git commit -m \"Initial commit — Terra Azur Explorer MVP\" 2>&1)",
+      "WebFetch(domain:www.komoot.com)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node -e ' *)",
+      "Read(//tmp/**)",
+      "Bash(mv index.html bundle.tar.gz)",
+      "Bash(tar -tzf bundle.tar.gz)",
+      "Bash(tar -xzf bundle.tar.gz)",
+      "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/sentier-baous-saint-jeannet.jpg.png' public/illustrations/trails/baous-saint-jeannet.png)",
+      "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/sentier-mont-vinaigre.jpg.png' public/illustrations/trails/mont-vinaigre.png)",
+      "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-bouquetin.jpg.png' public/illustrations/missions/bouquetin.png)",
+      "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-chene-liege.jpg.png' public/illustrations/missions/chene-liege.png)",
+      "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-point-de-vue.jpg.png' public/illustrations/missions/sommet-vinaigre.png)"
     ]
   }
 }

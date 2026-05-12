@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Pirata+One&family=Nunito:wght@400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Patrick+Hand&family=Special+Elite&family=Pirata+One&family=Nunito:wght@400;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -14,7 +14,9 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #F5E6C8;
+  background-color: #ebe0c2;
+  font-family: 'Patrick Hand', cursive;
+  color: #2b2620;
 }
 
 /* Custom marker styles */
@@ -23,24 +25,68 @@ html, body, #root {
   border: none;
 }
 
-/* Parchment texture overlay */
+/* Hide scrollbars */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* Parchment background — warm radial gradient */
 .parchment-bg {
-  background-color: #F5E6C8;
+  background:
+    radial-gradient(ellipse at top, #f6efdb 0%, #f0e4c2 60%, #ebe0c2 100%);
+}
+
+/* Paper grain overlay */
+.parchment-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23noise)' opacity='0.06'/%3E%3C/svg%3E");
+    radial-gradient(circle at 12% 18%, rgba(0,0,0,0.04) 0 1px, transparent 1px),
+    radial-gradient(circle at 78% 62%, rgba(0,0,0,0.035) 0 1px, transparent 1px),
+    radial-gradient(circle at 45% 85%, rgba(0,0,0,0.03) 0 1px, transparent 1px);
+  background-size: 7px 7px, 11px 11px, 9px 9px;
 }
 
-/* Card animation */
-@keyframes card-reveal {
-  0%   { transform: scale(0.5) rotate(-10deg); opacity: 0; }
-  70%  { transform: scale(1.1) rotate(2deg); }
-  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
 }
-.card-reveal { animation: card-reveal 0.6s ease-out forwards; }
-
-/* Pulse for nearby mission */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes shake {
+  10%,90% { transform: translateX(-2px); }
+  20%,80% { transform: translateX(3px); }
+  30%,50%,70% { transform: translateX(-5px); }
+  40%,60% { transform: translateX(5px); }
+}
 @keyframes nearby-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 105, 20, 0.7); }
-  50%       { box-shadow: 0 0 0 20px rgba(139, 105, 20, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(161,74,60,0.5); }
+  50%       { box-shadow: 0 0 0 18px rgba(161,74,60,0); }
 }
-.nearby-pulse { animation: nearby-pulse 1.5s infinite; }
+@keyframes missionNearbyPulse {
+  0%, 100% { filter: grayscale(1) brightness(0.25) drop-shadow(0 0 6px rgba(255,140,60,0.4)); }
+  50%      { filter: grayscale(1) brightness(0.35) drop-shadow(0 0 22px rgba(255,140,60,0.95)); }
+}
+@keyframes missionReveal {
+  0%   { opacity: 0; filter: grayscale(1) brightness(0.2); transform: scale(1.04); }
+  50%  { opacity: 1; filter: grayscale(0.4) brightness(0.7); transform: scale(1.01); }
+  100% { opacity: 1; filter: none; transform: scale(1); }
+}
+.nearby-pulse { animation: nearby-pulse 1.6s infinite; }
+.animate-fadeUp { animation: fadeUp .5s both; }
+.animate-cardIn { animation: cardIn .55s both cubic-bezier(.2,.8,.25,1); }
+.animate-shake { animation: shake .5s; }

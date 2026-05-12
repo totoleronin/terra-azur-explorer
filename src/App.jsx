@@ -104,7 +104,7 @@ export default function App() {
 
       {/* ── Écran 1 — Carte exploration ── */}
       <div className={`absolute inset-0 ${tab === 'explore' && screen === 'explore' ? 'block' : 'hidden'}`}>
-        <ExploreScreen onViewTrail={goToTrailDetail} />
+        <ExploreScreen onViewTrail={goToTrailDetail} collected={collected} />
       </div>
 
       {/* ── Collection ── */}

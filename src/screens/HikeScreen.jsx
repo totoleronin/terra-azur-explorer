@@ -61,15 +61,61 @@ function calcBearing(p1, p2) {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
 }
 
-function RouteLayer({ coords }) {
+// Finds the index of the closest route coordinate to a given point
+function closestRouteIdx(coords, lat, lng) {
+  let best = 0
+  let bestD = Infinity
+  for (let i = 0; i < coords.length; i++) {
+    const dlat = coords[i][0] - lat
+    const dlng = coords[i][1] - lng
+    const d = dlat * dlat + dlng * dlng
+    if (d < bestD) { bestD = d; best = i }
+  }
+  return best
+}
+
+function RouteLayer({ coords, missions = [], collected = [], userPos = null }) {
   if (!coords || coords.length < 2) return null
-  const arrows = [0.25, 0.5, 0.75].map(frac => {
-    const idx = Math.floor(frac * (coords.length - 2))
-    return { pos: coords[idx], deg: calcBearing(coords[idx], coords[idx + 1]) }
+
+  // Split index = furthest along the route between (a) all completed missions and (b) current user position
+  let splitIdx = 0
+  missions.forEach(m => {
+    if (!collected.includes(m.id)) return
+    const idx = closestRouteIdx(coords, m.lat, m.lng)
+    if (idx > splitIdx) splitIdx = idx
   })
+  if (userPos) {
+    const idx = closestRouteIdx(coords, userPos[0], userPos[1])
+    if (idx > splitIdx) splitIdx = idx
+  }
+
+  const doneCoords = splitIdx > 0 ? coords.slice(0, splitIdx + 1) : []
+  const remainingCoords = coords.slice(splitIdx)
+
+  // Arrows on the remaining (not-yet-walked) portion
+  const arrows = remainingCoords.length >= 2
+    ? [0.3, 0.7].map(frac => {
+        const idx = Math.max(0, Math.floor(frac * (remainingCoords.length - 2)))
+        return { pos: remainingCoords[idx], deg: calcBearing(remainingCoords[idx], remainingCoords[idx + 1]) }
+      })
+    : []
+
   return (
     <>
-      <Polyline positions={coords} pathOptions={{ color: '#a14a3c', weight: 4, opacity: 0.85 }} />
+      {/* Remaining portion — terra red */}
+      {remainingCoords.length >= 2 && (
+        <Polyline
+          positions={remainingCoords}
+          pathOptions={{ color: '#a14a3c', weight: 4, opacity: 0.85 }}
+        />
+      )}
+      {/* Consumed portion — green (drawn on top so the join looks clean) */}
+      {doneCoords.length >= 2 && (
+        <Polyline
+          positions={doneCoords}
+          pathOptions={{ color: '#4a6b3a', weight: 5, opacity: 0.95 }}
+        />
+      )}
       {arrows.map((a, i) => (
         <Marker key={i} position={a.pos} icon={arrowIcon(a.deg)} />
       ))}
@@ -181,7 +227,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
           />
 
           <RecenterMap position={userPos} />
-          <RouteLayer coords={routeCoords} />
+          <RouteLayer coords={routeCoords} missions={missions} collected={collected} userPos={userPos} />
 
           {userPos && (
             <>

@@ -400,7 +400,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
             </button>
           </div>
         ) : approachingMission ? (
-          /* ── ZONE D'APPROCHE : teaser mystérieux ── */
+          /* ── ZONE D'APPROCHE : teaser mystérieux + bouton Ouvrir ── */
           <div
             className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
             style={{
@@ -429,11 +429,23 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
               </div>
               <div
                 className="font-title font-bold leading-none"
-                style={{ fontSize: 18, color: '#f4ecd8' }}
+                style={{ fontSize: 16, color: '#f4ecd8' }}
               >
                 Ouvre tes sens, continue dans cette direction
               </div>
             </div>
+            <button
+              onClick={() => onUnlockMission(approachingMission)}
+              className="cursor-pointer rounded-full px-3 py-2 font-title font-bold flex-none"
+              style={{
+                background: '#b8862e',
+                color: '#1c1a14',
+                fontSize: 14,
+                border: 'none',
+              }}
+            >
+              Ouvrir
+            </button>
           </div>
         ) : nextMission ? (
           <div

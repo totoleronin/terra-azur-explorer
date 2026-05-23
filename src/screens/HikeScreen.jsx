@@ -260,7 +260,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
 
       {/* TOP BAR */}
       <div
-        className="absolute top-0 left-0 right-0 z-[10] flex items-center justify-between px-4"
+        className="absolute top-0 left-0 right-0 z-[500] flex items-center justify-between px-4"
         style={{ height: 56 }}
       >
         <button
@@ -303,14 +303,14 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
       </div>
 
       {/* HUD chips */}
-      <div className="absolute top-[100px] left-4 z-[8] flex flex-col gap-2">
+      <div className="absolute top-[100px] left-4 z-[500] flex flex-col gap-2">
         <HudChip
           icon="✦"
           label="MISSIONS"
           value={`${completedCount}/${missions.length}`}
         />
       </div>
-      <div className="absolute top-[100px] right-4 z-[8] flex flex-col gap-2">
+      <div className="absolute top-[100px] right-4 z-[500] flex flex-col gap-2">
         <HudChip
           icon="📏"
           label="DISTANCE"
@@ -321,7 +321,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
 
       {!userPos && (
         <div
-          className="absolute top-[170px] left-4 right-4 z-[9] text-center py-2 px-3 rounded-xl backdrop-blur-sm font-body"
+          className="absolute top-[170px] left-4 right-4 z-[500] text-center py-2 px-3 rounded-xl backdrop-blur-sm font-body"
           style={{
             background: 'rgba(43,38,32,0.85)',
             color: '#f4ecd8',
@@ -333,8 +333,9 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
       )}
 
       {/* BOTTOM SHEET: progress + next mission / nearby mission */}
+      {/* z-[500] pour passer au-dessus des panes Leaflet internes (z-index 400+) */}
       <div
-        className="absolute left-0 right-0 bottom-0 z-[9] px-4 pt-3.5 pb-5"
+        className="absolute left-0 right-0 bottom-0 z-[500] px-4 pt-3.5 pb-5"
         style={{ background: 'linear-gradient(to top, #ebe0c2 75%, rgba(235,224,194,0))' }}
       >
         <div className="flex items-center gap-2.5 mb-3">

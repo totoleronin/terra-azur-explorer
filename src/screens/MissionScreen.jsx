@@ -1,17 +1,49 @@
 import React, { useState } from 'react'
 import { MissionIllustration } from '../components/Illustration'
+import NarrativePage from '../components/NarrativePage'
+import { useMissionNarrative, useTrailNarrative } from '../hooks/useNarrative'
 
 const CATEGORY_EMOJI = { Plante: '🌿', Animal: '🦌', 'Géologie': '🪨', 'Point de vue': '🏔️' }
 
+const OBSERVATION_LABEL = {
+  visuel: '👁 Observe',
+  sensoriel: '✋ Ressens',
+  comportemental: '🔭 Regarde',
+  orientation: '🧭 Repère-toi',
+}
+
 export default function MissionScreen({ mission, onComplete, onClose }) {
-  const [phase, setPhase] = useState('discover')
+  const hasObservation = !!(mission?.observation_question)
+  const [phase, setPhase] = useState(hasObservation ? 'observe' : 'discover')
   const [hintsShown, setHintsShown] = useState(0)
   const [shake, setShake] = useState(false)
+  const [observeShake, setObserveShake] = useState(false)
+  const [observeWrong, setObserveWrong] = useState(false)
+  const [observeSuccess, setObserveSuccess] = useState(false)
+  const narrative = useMissionNarrative(mission?.id)
+  const trail = useTrailNarrative(mission?.sentier_id)
 
   if (!mission) return null
 
   const choix = Array.isArray(mission.choix) ? mission.choix : JSON.parse(mission.choix || '[]')
+  const observeChoix = Array.isArray(mission.observation_choix)
+    ? mission.observation_choix
+    : JSON.parse(mission.observation_choix || '[]')
   const emoji = mission.icone || CATEGORY_EMOJI[mission.categorie] || '🎯'
+
+  function handleObserve(idx) {
+    if (idx === mission.observation_bonne_reponse) {
+      setObserveSuccess(true)
+      setTimeout(() => {
+        setObserveSuccess(false)
+        setPhase('discover')
+      }, 1400)
+    } else {
+      setObserveWrong(true)
+      setObserveShake(true)
+      setTimeout(() => setObserveShake(false), 600)
+    }
+  }
 
   function handleAnswer(idx) {
     if (idx === mission.bonne_reponse) {
@@ -107,11 +139,185 @@ export default function MissionScreen({ mission, onComplete, onClose }) {
               boxShadow: '3px 3px 0 #b8862e',
             }}
           >
-            Continuer l'aventure
+            Continuer l'exploration
             <svg width="16" height="16" viewBox="0 0 14 14">
               <path d="M3 7 H 11 M 8 4 L 11 7 L 8 10" stroke="#f4ecd8" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── OBSERVATION overlay (succès) ──
+  if (phase === 'observe' && observeSuccess) {
+    return (
+      <div
+        className="absolute inset-0 z-[60] flex items-center justify-center p-5 font-body"
+        style={{ background: 'rgba(15,13,9,0.7)', animation: 'fadeIn .2s both' }}
+      >
+        <div
+          className="w-full rounded-[18px] p-6 text-center"
+          style={{
+            background: '#f4ecd8',
+            border: '2px solid #2b2620',
+            boxShadow: '4px 4px 0 #4a6b3a',
+            animation: 'popIn .35s both',
+          }}
+        >
+          <div style={{ fontSize: 48, marginBottom: 12 }}>👁</div>
+          <div className="font-mono uppercase text-ink-mute mb-1" style={{ fontSize: 9, letterSpacing: 2 }}>
+            Défi d'observation
+          </div>
+          <h2 className="m-0 mb-2 font-title font-bold text-ink leading-none" style={{ fontSize: 30 }}>
+            Bien observé !
+          </h2>
+          <p className="m-0 font-body text-ink-soft leading-snug" style={{ fontSize: 14 }}>
+            Tu peux maintenant lire la page du carnet…
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── OBSERVATION phase ──
+  if (phase === 'observe') {
+    const obsLabel = OBSERVATION_LABEL[mission.observation_type] || '👁 Observe'
+    return (
+      <div className="relative w-full h-full overflow-hidden parchment-bg font-body text-ink">
+
+        {/* HERO — locked silhouette */}
+        <div className="absolute top-0 left-0 right-0 z-[1]" style={{ height: 200 }}>
+          <MissionIllustration mission={mission} state="locked" />
+          <div
+            className="absolute left-0 right-0 bottom-0 h-[60px]"
+            style={{ background: 'linear-gradient(to bottom, transparent, #ebe0c2)' }}
+          />
+        </div>
+
+        {/* TOP BAR */}
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4" style={{ height: 56 }}>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full grid place-items-center cursor-pointer backdrop-blur-sm"
+            style={{ background: 'rgba(244,236,216,0.92)', border: '1.5px solid #2b2620', boxShadow: '1.5px 1.5px 0 #2b2620' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <path d="M9 2 L4 7 L9 12" stroke="#2b2620" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <div
+            className="px-3.5 py-1.5 rounded-full backdrop-blur-sm font-mono uppercase text-ink"
+            style={{ background: 'rgba(244,236,216,0.92)', border: '1.5px solid #2b2620', boxShadow: '1.5px 1.5px 0 #2b2620', fontSize: 9, letterSpacing: 1.5 }}
+          >
+            {obsLabel}
+          </div>
+          <div className="w-9 h-9" />
+        </div>
+
+        {/* CONTENT */}
+        <div
+          className={`absolute inset-0 overflow-y-auto overflow-x-hidden no-scrollbar ${observeShake ? 'animate-shake' : ''}`}
+          style={{ paddingTop: 200, paddingBottom: 24 }}
+        >
+          {/* HEADER */}
+          <div className="px-[18px] pt-2.5 pb-3.5 animate-fadeUp">
+            <div className="flex items-center gap-2 mb-1.5 font-mono uppercase" style={{ fontSize: 9, letterSpacing: 1.8, color: '#1c4f4c' }}>
+              <span>✦ Défi d'observation · {mission.categorie || ''}</span>
+            </div>
+            <h1 className="m-0 font-title font-bold text-ink leading-none" style={{ fontSize: 28 }}>
+              {mission.titre}
+            </h1>
+          </div>
+
+          {/* INTRO CARD */}
+          <div className="px-[18px] pb-3.5 animate-fadeUp">
+            <div
+              className="rounded-2xl px-4 py-3.5 flex items-start gap-3"
+              style={{ background: 'linear-gradient(135deg, #1c1a14, #2b2620)', border: '1.5px solid #b8862e', boxShadow: '3px 3px 0 #b8862e' }}
+            >
+              <div style={{ fontSize: 28, marginTop: 2 }}>👁</div>
+              <div>
+                <div className="font-mono uppercase mb-1" style={{ fontSize: 8, letterSpacing: 1.5, color: '#b8862e' }}>
+                  Avant de lire le carnet
+                </div>
+                <p className="m-0 font-body leading-snug" style={{ fontSize: 14, color: '#f4ecd8' }}>
+                  Prends le temps d'observer ce qui t'entoure. Réponds à la question, puis la page du naturaliste se révélera.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* QUESTION */}
+          <div className="px-[18px] pb-3.5 animate-fadeUp">
+            <div
+              className="rounded-2xl px-4 py-3.5 relative"
+              style={{ background: '#f9f1de', border: '1.5px solid #1c4f4c', boxShadow: '3px 3px 0 #1c4f4c' }}
+            >
+              <div
+                className="absolute font-mono uppercase px-2"
+                style={{ top: -10, left: 14, background: '#f9f1de', fontSize: 9, letterSpacing: 1.8, color: '#1c4f4c' }}
+              >
+                ✦ {obsLabel}
+              </div>
+              <p className="m-0 font-title text-ink leading-snug" style={{ fontSize: 20, fontWeight: 500 }}>
+                {mission.observation_question}
+              </p>
+            </div>
+          </div>
+
+          {/* FEEDBACK MAUVAISE RÉPONSE */}
+          {observeWrong && (
+            <div className="px-[18px] pb-3 animate-fadeUp">
+              <div className="rounded-xl px-3 py-2" style={{ background: '#fff8e6', border: '1px solid #b8862e' }}>
+                <div className="font-mono uppercase text-ink-mute mb-0.5" style={{ fontSize: 8, letterSpacing: 1.5 }}>
+                  🔍 Regarde encore…
+                </div>
+                <div className="font-body text-ink leading-snug" style={{ fontSize: 14 }}>
+                  Prends le temps d'observer plus attentivement ton environnement.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CHOICES */}
+          <div className="px-[18px] pb-4 flex flex-col gap-2.5 animate-fadeUp">
+            {observeChoix.map((c, i) => (
+              <button
+                key={i}
+                onClick={() => handleObserve(i)}
+                className="text-left cursor-pointer font-body flex items-center gap-3"
+                style={{
+                  background: '#f4ecd8',
+                  color: '#2b2620',
+                  border: '1.5px solid #2b2620',
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                  fontSize: 15,
+                  boxShadow: '2px 2px 0 #2b2620',
+                }}
+              >
+                <span
+                  className="w-7 h-7 rounded-full grid place-items-center font-title font-bold flex-none"
+                  style={{ background: '#1c4f4c', color: '#f4ecd8', border: '1.5px solid #2b2620', fontSize: 16 }}
+                >
+                  {['A', 'B', 'C'][i]}
+                </span>
+                <span className="flex-1">{c}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* SECONDARY */}
+          <div className="px-[18px] pb-4">
+            <button
+              onClick={onClose}
+              className="w-full cursor-pointer font-body flex items-center justify-center gap-1.5"
+              style={{ background: '#f9f1de', color: '#2b2620', border: '1.5px solid #2b2620', borderRadius: 10, padding: '10px 0', fontSize: 13, boxShadow: '1.5px 1.5px 0 #2b2620' }}
+            >
+              ↩︎ Plus tard
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -186,37 +392,43 @@ export default function MissionScreen({ mission, onComplete, onClose }) {
           </h1>
         </div>
 
-        {/* DISCOVER TEXT */}
+        {/* PAGE DU CARNET — version manuscrite (Caveat) si trame narrative dispo */}
         {phase !== 'question' && phase !== 'wrong' && (
           <div className="px-[18px] pb-3.5 animate-fadeUp">
-            <div
-              className="rounded-2xl px-4 py-3.5 relative"
-              style={{
-                background: '#fff8e6',
-                border: '1.5px solid #b8862e',
-                boxShadow: '3px 3px 0 #b8862e',
-              }}
-            >
+            {narrative ? (
+              <NarrativePage
+                pageNumber={narrative.page_number}
+                naturalist={trail?.naturalist_name ? `${trail.naturalist_name}, ${trail.naturalist_period || ''}`.trim().replace(/,\s*$/, '') : null}
+                text={narrative.journal_text}
+                audioUrl={narrative.audio_url}
+              />
+            ) : (
               <div
-                className="absolute font-mono uppercase px-2"
+                className="rounded-2xl px-4 py-3.5 relative"
                 style={{
-                  top: -10,
-                  left: 14,
                   background: '#fff8e6',
-                  fontSize: 9,
-                  letterSpacing: 1.8,
-                  color: '#b8862e',
+                  border: '1.5px solid #b8862e',
+                  boxShadow: '3px 3px 0 #b8862e',
                 }}
               >
-                ✦ Le carnet
+                <div
+                  className="absolute font-label uppercase px-2"
+                  style={{
+                    top: -10,
+                    left: 14,
+                    background: '#fff8e6',
+                    fontSize: 9,
+                    letterSpacing: 1.8,
+                    color: '#b8862e',
+                  }}
+                >
+                  ✦ Le carnet
+                </div>
+                <p className="m-0 font-body text-ink leading-snug" style={{ fontSize: 15 }}>
+                  {mission.texte}
+                </p>
               </div>
-              <p
-                className="m-0 font-body text-ink leading-snug"
-                style={{ fontSize: 15 }}
-              >
-                {mission.texte}
-              </p>
-            </div>
+            )}
           </div>
         )}
 

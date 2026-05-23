@@ -169,6 +169,7 @@ function HudChip({ icon, label, value, align = 'left' }) {
 export default function HikeScreen({ sentier, missions, collected, onBack, onUnlockMission }) {
   const [userPos, setUserPos] = useState(null)
   const [nearbyMission, setNearbyMission] = useState(null)
+  const [approachingMission, setApproachingMission] = useState(null)
   const [elapsed, setElapsed] = useState(0)
   const watchRef = useRef(null)
   const startTime = useRef(Date.now())
@@ -195,6 +196,13 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
           return distanceMetres(lat, lng, m.lat, m.lng) <= (m.rayon_metres || 50)
         })
         setNearbyMission(found || null)
+        // Zone d'approche : entre rayon_approche_metres et rayon_metres
+        const approaching = found ? null : missions.find(m => {
+          if (collected.includes(m.id)) return false
+          const d = distanceMetres(lat, lng, m.lat, m.lng)
+          return d > (m.rayon_metres || 50) && d <= (m.rayon_approche_metres || 150)
+        })
+        setApproachingMission(approaching || null)
       },
       err => console.warn('GPS:', err),
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
@@ -389,6 +397,42 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
             >
               Ouvrir
             </button>
+          </div>
+        ) : approachingMission ? (
+          /* ── ZONE D'APPROCHE : teaser mystérieux ── */
+          <div
+            className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
+            style={{
+              background: 'linear-gradient(135deg, #1c1a14, #2b2620)',
+              border: '1.5px solid #b8862e',
+              boxShadow: '2px 2px 0 #b8862e',
+            }}
+          >
+            <div
+              className="w-11 h-11 rounded-xl grid place-items-center flex-none"
+              style={{
+                background: 'rgba(184,134,46,0.15)',
+                border: '1.5px solid #b8862e',
+                animation: 'missionGlowPulse 1.6s ease-in-out infinite',
+                fontSize: 22,
+              }}
+            >
+              👁
+            </div>
+            <div className="flex-1 min-w-0">
+              <div
+                className="font-mono uppercase mb-0.5"
+                style={{ fontSize: 8, letterSpacing: 1.5, color: '#b8862e' }}
+              >
+                ✦ Tu approches de quelque chose…
+              </div>
+              <div
+                className="font-title font-bold leading-none"
+                style={{ fontSize: 18, color: '#f4ecd8' }}
+              >
+                Ouvre tes sens, continue dans cette direction
+              </div>
+            </div>
           </div>
         ) : nextMission ? (
           <div

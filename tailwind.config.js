@@ -26,10 +26,12 @@ export default {
         },
       },
       fontFamily: {
-        title:  ['"Caveat"', 'cursive'],
-        body:   ['"Patrick Hand"', 'cursive'],
-        mono:   ['"Special Elite"', 'monospace'],
-        adventure: ['"Pirata One"', 'cursive'],
+        title:   ['"Bebas Neue"', 'sans-serif'],   // grands titres
+        label:   ['"Lora"', 'serif'],              // sous-titres et labels
+        body:    ['"Inter"', 'system-ui', 'sans-serif'], // corps de texte
+        journal: ['"Caveat"', 'cursive'],          // éléments manuscrits du carnet
+        // Aliases legacy pour compat
+        mono:    ['"Lora"', 'serif'],
       },
     },
   },

@@ -210,9 +210,9 @@ export default function ExploreScreen({ onViewTrail, collected = [] }) {
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#a14a3c' }} />
             Bonjour, explorateur · {sentiers.length} sentiers
           </div>
-          <h1 className="font-title font-bold text-ink m-0 leading-none mt-1" style={{ fontSize: 38, letterSpacing: -0.5 }}>
+          <h1 className="font-title text-ink m-0 leading-none mt-1" style={{ fontSize: 38, letterSpacing: -0.5, fontWeight: 400 }}>
             Où partons-<br />
-            <span style={{ color: '#a14a3c' }}>nous aujourd'hui ?</span>
+            <span style={{ color: '#1c4f4c' }}>nous aujourd'hui ?</span>
           </h1>
         </header>
 

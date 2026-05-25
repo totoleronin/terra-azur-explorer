@@ -518,7 +518,7 @@ export default function TrailDetailScreen({ sentier, collected = [], onStart, on
         <div className="px-[18px] pt-3.5 pb-3 animate-fadeUp">
           <div className="flex items-baseline justify-between mb-3">
             <h2 className="m-0 font-title font-bold text-ink" style={{ fontSize: 26 }}>
-              Le carnet d'aventure
+              Le carnet de l'Explorateur
             </h2>
             <span className="font-mono uppercase text-ink-mute" style={{ fontSize: 9, letterSpacing: 1.5 }}>
               {completedCount} / {missions.length}
@@ -570,7 +570,7 @@ export default function TrailDetailScreen({ sentier, collected = [], onStart, on
           <svg width="18" height="18" viewBox="0 0 18 18">
             <path d="M5 2 L14 9 L5 16 Z" fill="#b8862e" stroke="#b8862e" strokeWidth="1.4" strokeLinejoin="round" />
           </svg>
-          {completedCount > 0 ? "Reprendre l'aventure" : "Démarrer l'aventure"}
+          {completedCount > 0 ? "Reprendre le sentier" : "Démarrer le sentier"}
         </button>
       </div>
 

@@ -3,200 +3,229 @@ import { MapContainer, TileLayer, Marker, Circle, Polyline, useMap } from 'react
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { distanceMetres } from '../lib/geo'
+import { useMissionNarrative } from '../hooks/useNarrative'
+import { useWeather } from '../hooks/useWeather'
 
 const CATEGORY_EMOJI = { Plante: '🌿', Animal: '🦌', 'Géologie': '🪨', 'Point de vue': '🏔️' }
 
-function missionIcon(done, mission) {
-  const emoji = done ? '✅' : (mission.icone || CATEGORY_EMOJI[mission.categorie] || '🎯')
+// ── Icônes Leaflet ────────────────────────────────────────────────────────────
+
+function missionIcon(done, isNext, mission) {
+  const emoji = done ? '✓' : (isNext ? (mission.icone || CATEGORY_EMOJI[mission.categorie] || '🎯') : '?')
+  const bg    = done ? '#4a6b3a' : (isNext ? '#a14a3c' : '#2e2b26')
+  const color = done ? '#f4ecd8' : (isNext ? '#f4ecd8' : '#7a6e62')
   return L.divIcon({
     className: 'mission-marker-icon',
     html: `<div style="
       width:40px; height:40px;
-      background: ${done ? '#4a6b3a' : '#a14a3c'};
-      border: 2.5px solid #f4ecd8;
-      box-shadow: 0 0 0 1.5px #2b2620, 0 4px 10px rgba(43,38,32,0.35);
-      border-radius: 50%;
-      display:flex; align-items:center; justify-content:center;
-      font-size:20px;
+      background:${bg};
+      border:2.5px solid ${done ? '#f4ecd8' : isNext ? '#f4ecd8' : '#4a4540'};
+      box-shadow:0 0 0 1.5px ${done ? '#4a6b3a' : '#2b2620'},0 4px 10px rgba(0,0,0,.4);
+      border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:${done ? '14px' : '18px'};
+      font-weight:bold;
+      color:${color};
+      font-family:sans-serif;
     ">${emoji}</div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
+    iconSize: [40, 40], iconAnchor: [20, 20],
   })
 }
 
 const userIcon = L.divIcon({
   className: 'mission-marker-icon',
   html: `<div style="
-    width:22px; height:22px;
-    background: #a14a3c;
-    border: 3px solid #f4ecd8;
-    border-radius: 50%;
-    box-shadow: 0 0 0 1.5px #2b2620, 0 0 0 10px rgba(161,74,60,0.22);
+    width:16px;height:16px;
+    background:#4a8fff;
+    border:3px solid #fff;
+    border-radius:50%;
+    box-shadow:0 0 0 6px rgba(74,143,255,.2);
   "></div>`,
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
+  iconSize: [16, 16], iconAnchor: [8, 8],
 })
 
-function arrowIcon(deg) {
-  return L.divIcon({
-    className: 'mission-marker-icon',
-    html: `<div style="
-      width:20px; height:20px;
-      display:flex; align-items:center; justify-content:center;
-      transform:rotate(${deg}deg);
-      color:#a14a3c; font-size:14px;
-      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));
-    ">▲</div>`,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  })
+// ── Tracé ─────────────────────────────────────────────────────────────────────
+
+function getTrackCoords(sentier) {
+  if (sentier?.gpx_track?.length >= 2)   return sentier.gpx_track
+  if (sentier?.route_coords?.length >= 2) return sentier.route_coords
+  return []
 }
 
-function calcBearing(p1, p2) {
-  const toRad = x => x * Math.PI / 180
-  const dLng = toRad(p2[1] - p1[1])
-  const lat1 = toRad(p1[0]), lat2 = toRad(p2[0])
-  const y = Math.sin(dLng) * Math.cos(lat2)
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
-  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
-}
-
-// Finds the index of the closest route coordinate to a given point
-function closestRouteIdx(coords, lat, lng) {
-  let best = 0
-  let bestD = Infinity
+function closestIdx(coords, lat, lng) {
+  let best = 0, bestD = Infinity
   for (let i = 0; i < coords.length; i++) {
-    const dlat = coords[i][0] - lat
-    const dlng = coords[i][1] - lng
-    const d = dlat * dlat + dlng * dlng
+    const d = (coords[i][0]-lat)**2 + (coords[i][1]-lng)**2
     if (d < bestD) { bestD = d; best = i }
   }
   return best
 }
 
-function RouteLayer({ coords, missions = [], collected = [], userPos = null }) {
+function RouteLayer({ coords, missions, collected, userPos, nextMissionId }) {
   if (!coords || coords.length < 2) return null
+  const ll = coords.map(c => [c[0], c[1]])
 
-  // Split index = furthest along the route between (a) all completed missions and (b) current user position
   let splitIdx = 0
   missions.forEach(m => {
     if (!collected.includes(m.id)) return
-    const idx = closestRouteIdx(coords, m.lat, m.lng)
+    const idx = closestIdx(coords, m.lat, m.lng)
     if (idx > splitIdx) splitIdx = idx
   })
   if (userPos) {
-    const idx = closestRouteIdx(coords, userPos[0], userPos[1])
+    const idx = closestIdx(coords, userPos[0], userPos[1])
     if (idx > splitIdx) splitIdx = idx
   }
 
-  const doneCoords = splitIdx > 0 ? coords.slice(0, splitIdx + 1) : []
-  const remainingCoords = coords.slice(splitIdx)
-
-  // Arrows on the remaining (not-yet-walked) portion
-  const arrows = remainingCoords.length >= 2
-    ? [0.3, 0.7].map(frac => {
-        const idx = Math.max(0, Math.floor(frac * (remainingCoords.length - 2)))
-        return { pos: remainingCoords[idx], deg: calcBearing(remainingCoords[idx], remainingCoords[idx + 1]) }
-      })
-    : []
+  const done      = splitIdx > 0 ? ll.slice(0, splitIdx + 1) : []
+  const remaining = ll.slice(splitIdx)
 
   return (
     <>
-      {/* Remaining portion — terra red */}
-      {remainingCoords.length >= 2 && (
-        <Polyline
-          positions={remainingCoords}
-          pathOptions={{ color: '#a14a3c', weight: 4, opacity: 0.85 }}
-        />
+      {remaining.length >= 2 && (
+        <Polyline positions={remaining} pathOptions={{ color: '#c8a86e', weight: 3, opacity: 0.8, dashArray: '8,5' }} />
       )}
-      {/* Consumed portion — green (drawn on top so the join looks clean) */}
-      {doneCoords.length >= 2 && (
-        <Polyline
-          positions={doneCoords}
-          pathOptions={{ color: '#4a6b3a', weight: 5, opacity: 0.95 }}
-        />
+      {done.length >= 2 && (
+        <Polyline positions={done} pathOptions={{ color: '#4a6b3a', weight: 4, opacity: 0.95 }} />
       )}
-      {arrows.map((a, i) => (
-        <Marker key={i} position={a.pos} icon={arrowIcon(a.deg)} />
-      ))}
     </>
   )
 }
 
 function RecenterMap({ position }) {
   const map = useMap()
-  const hasCentered = useRef(false)
+  const done = useRef(false)
   useEffect(() => {
-    if (position && !hasCentered.current) {
-      map.setView(position, 15)
-      hasCentered.current = true
-    }
+    if (position && !done.current) { map.setView(position, 15); done.current = true }
   }, [position, map])
   return null
 }
 
-function HudChip({ icon, label, value, align = 'left' }) {
+// ── Profil altimétrique ───────────────────────────────────────────────────────
+
+function ElevationProfile({ coords, userIdx, sentierInfo }) {
+  const W = 300, H = 68
+  const hasEle = coords.length > 0 && coords[0].length >= 3
+
+  // Élévations : réelles ou synthétiques
+  let eles
+  if (hasEle) {
+    eles = coords.map(c => c[2])
+  } else {
+    // Profil synthétique basé sur les infos du sentier (montée progressive → pic → descente)
+    const N = Math.max(coords.length, 40)
+    const peakEle  = sentierInfo?.peak_ele  || 600
+    const startEle = sentierInfo?.start_ele || 300
+    eles = Array.from({ length: N }, (_, i) => {
+      const t = i / (N - 1)
+      if (t < 0.72) return startEle + (t / 0.72) * (peakEle - startEle)
+      return peakEle - ((t - 0.72) / 0.28) * (peakEle - startEle) * 0.45
+    })
+  }
+
+  const minEle = Math.min(...eles)
+  const maxEle = Math.max(...eles)
+  const range  = maxEle - minEle || 1
+  const N      = eles.length
+
+  const toX = i => (i / (N - 1)) * W
+  const toY = e => H - 4 - ((e - minEle) / range) * (H - 12)
+
+  const pathD = eles.map((e, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(e).toFixed(1)}`).join(' ')
+
+  // Position explorateur sur le profil
+  const progIdx = hasEle ? userIdx : Math.round((userIdx / Math.max(1, coords.length - 1)) * (N - 1))
+  const px = toX(Math.min(progIdx, N - 1))
+  const py = toY(eles[Math.min(progIdx, N - 1)])
+  const currentEle = Math.round(eles[Math.min(progIdx, N - 1)])
+
   return (
-    <div
-      className="rounded-xl px-2.5 py-1.5 backdrop-blur-sm"
-      style={{
-        background: 'rgba(244,236,216,0.92)',
-        border: '1.5px solid #2b2620',
-        boxShadow: '1.5px 1.5px 0 #2b2620',
-        minWidth: 88,
-        textAlign: align,
-      }}
-    >
-      <div
-        className="font-mono uppercase flex items-center gap-1"
-        style={{
-          fontSize: 8,
-          letterSpacing: 1.5,
-          color: '#8a7e6c',
-          justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
-        }}
+    <div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ width: '100%', height: H, display: 'block' }}
       >
-        <span style={{ color: '#a14a3c' }}>{icon}</span>
-        {label}
-      </div>
-      <div className="font-title font-bold text-ink leading-none" style={{ fontSize: 18 }}>
-        {value}
+        <defs>
+          <linearGradient id="ele-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#b8862e" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#b8862e" stopOpacity="0.04" />
+          </linearGradient>
+        </defs>
+        {/* Remplissage sous la courbe */}
+        <path d={`${pathD} L${W},${H} L0,${H} Z`} fill="url(#ele-grad)" />
+        {/* Courbe */}
+        <path d={pathD} fill="none" stroke="#b8862e" strokeWidth="1.8" strokeLinejoin="round" />
+        {/* Ligne verticale position */}
+        <line x1={px} y1="0" x2={px} y2={H} stroke="rgba(244,236,216,0.35)" strokeWidth="1" strokeDasharray="3,3" />
+        {/* Point position */}
+        <circle cx={px} cy={py} r="3.5" fill="#f4ecd8" stroke="#b8862e" strokeWidth="1.5" />
+      </svg>
+      {/* Labels bas */}
+      <div className="flex items-center justify-between mt-1">
+        <span className="font-mono" style={{ fontSize: 9, color: '#5a5048' }}>0 km</span>
+        <span className="font-mono" style={{ fontSize: 9, color: '#b8862e' }}>
+          Tu es ici · {currentEle} m
+        </span>
+        <span className="font-mono" style={{ fontSize: 9, color: '#5a5048' }}>{sentierInfo?.distance_km ?? '?'} km</span>
       </div>
     </div>
   )
 }
 
+// ── Chip météo ────────────────────────────────────────────────────────────────
+
+function WeatherOverlay({ lat, lng }) {
+  const weather = useWeather(lat, lng)
+  if (!weather) return null
+  return (
+    <div
+      className="absolute top-2.5 right-2.5 z-[500] flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl backdrop-blur-sm"
+      style={{ background: 'rgba(20,18,14,.78)', border: '1px solid rgba(184,134,46,.4)', fontSize: 13, color: '#f4ecd8' }}
+    >
+      <span>{weather.emoji}</span>
+      <span className="font-title font-bold">{weather.temp}°</span>
+    </div>
+  )
+}
+
+// ── HikeScreen ────────────────────────────────────────────────────────────────
+
 export default function HikeScreen({ sentier, missions, collected, onBack, onUnlockMission }) {
-  const [userPos, setUserPos] = useState(null)
-  const [nearbyMission, setNearbyMission] = useState(null)
-  const [approachingMission, setApproachingMission] = useState(null)
-  const [elapsed, setElapsed] = useState(0)
-  const watchRef = useRef(null)
-  const startTime = useRef(Date.now())
+  const [userPos,           setUserPos]           = useState(null)
+  const [nearbyMission,     setNearbyMission]     = useState(null)
+  const [approachingMission,setApproachingMission]= useState(null)
+  const [elapsed,           setElapsed]           = useState(0)
+  const [expanded,          setExpanded]          = useState(false)
+  const [ttsPlaying,        setTtsPlaying]        = useState(false)
+  const utteranceRef = useRef(null)
+  const watchRef     = useRef(null)
+  const startRef     = useRef(Date.now())
 
   const completedCount = missions.filter(m => collected.includes(m.id)).length
-  const pct = missions.length > 0 ? (completedCount / missions.length) * 100 : 0
+  const nextMission    = missions.find(m => !collected.includes(m.id))
+  const narrative      = useMissionNarrative(nextMission?.id)
 
-  const routeCoords = sentier.route_coords ||
-    missions.map(m => [m.lat, m.lng]).concat(
-      missions.length ? [[missions[0].lat, missions[0].lng]] : []
-    )
+  const trackCoords    = getTrackCoords(sentier)
+  const mapCenter      = userPos || [sentier.lat_depart, sentier.lng_depart]
+  const userTrackIdx   = userPos ? closestIdx(trackCoords, userPos[0], userPos[1]) : 0
 
-  // next mission = first one not yet collected
-  const nextMission = missions.find(m => !collected.includes(m.id))
+  const distToNext = userPos && nextMission
+    ? Math.round(distanceMetres(userPos[0], userPos[1], nextMission.lat, nextMission.lng))
+    : null
 
+  const elapsedLabel = `${Math.floor(elapsed / 3600)}h${String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0')}`
+
+  // ── GPS watch ──
   useEffect(() => {
     if (!navigator.geolocation) return
     watchRef.current = navigator.geolocation.watchPosition(
       pos => {
         const { latitude: lat, longitude: lng } = pos.coords
         setUserPos([lat, lng])
-        const found = missions.find(m => {
-          if (collected.includes(m.id)) return false
-          return distanceMetres(lat, lng, m.lat, m.lng) <= (m.rayon_metres || 50)
-        })
+        const found = missions.find(m =>
+          !collected.includes(m.id) && distanceMetres(lat, lng, m.lat, m.lng) <= (m.rayon_metres || 50)
+        )
         setNearbyMission(found || null)
-        // Zone d'approche : entre rayon_approche_metres et rayon_metres
         const approaching = found ? null : missions.find(m => {
           if (collected.includes(m.id)) return false
           const d = distanceMetres(lat, lng, m.lat, m.lng)
@@ -210,282 +239,298 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
     return () => { if (watchRef.current) navigator.geolocation.clearWatch(watchRef.current) }
   }, [missions, collected])
 
+  // ── Timer ──
   useEffect(() => {
-    const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTime.current) / 1000))
-    }, 1000)
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000)
     return () => clearInterval(id)
   }, [])
 
-  const elapsedLabel = `${Math.floor(elapsed / 3600)}h${String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0')}`
-  const mapCenter = userPos || [sentier.lat_depart, sentier.lng_depart]
+  // ── TTS ──
+  function toggleTts() {
+    if (ttsPlaying) {
+      window.speechSynthesis.cancel()
+      setTtsPlaying(false)
+      return
+    }
+    const text = narrative?.journal_text || nextMission?.texte
+    if (!text || !('speechSynthesis' in window)) return
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = 'fr-FR'; u.rate = 0.95
+    u.onend = () => setTtsPlaying(false)
+    utteranceRef.current = u
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(u)
+    setTtsPlaying(true)
+  }
 
-  // Distance done estimate: number of done missions / total * trail length
-  const distanceDone = (completedCount / Math.max(1, missions.length)) * (sentier.distance_km || 0)
+  const activeCard = nearbyMission ?? approachingMission
 
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="relative w-full h-full overflow-hidden font-body text-ink">
+    <div
+      className="w-full h-full overflow-y-auto overflow-x-hidden no-scrollbar font-body"
+      style={{ background: '#181c17', color: '#f4ecd8' }}
+    >
 
-      {/* MAP — full bleed real Leaflet + OSM */}
-      <div className="absolute inset-0">
-        <MapContainer center={mapCenter} zoom={15} zoomControl={false} className="w-full h-full">
-          <TileLayer
-            attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-
-          <RecenterMap position={userPos} />
-          <RouteLayer coords={routeCoords} missions={missions} collected={collected} userPos={userPos} />
-
-          {userPos && (
-            <>
-              <Marker position={userPos} icon={userIcon} />
-              <Circle
-                center={userPos}
-                radius={50}
-                pathOptions={{ color: '#a14a3c', fillColor: '#a14a3c', fillOpacity: 0.08, weight: 1 }}
-              />
-            </>
-          )}
-
-          {missions.map(mission => (
-            <Marker
-              key={mission.id}
-              position={[mission.lat, mission.lng]}
-              icon={missionIcon(collected.includes(mission.id), mission)}
-            />
-          ))}
-        </MapContainer>
-      </div>
-
-      {/* TOP BAR */}
+      {/* ── TOP BAR sticky ── */}
       <div
-        className="absolute top-0 left-0 right-0 z-[500] flex items-center justify-between px-4"
-        style={{ height: 56 }}
+        className="sticky top-0 z-10 flex items-center justify-between px-4"
+        style={{ height: 52, background: '#181c17', borderBottom: '1px solid rgba(244,236,216,0.06)' }}
       >
         <button
           onClick={onBack}
-          className="w-9 h-9 rounded-full grid place-items-center cursor-pointer backdrop-blur-sm"
-          style={{
-            background: 'rgba(244,236,216,0.92)',
-            border: '1.5px solid #2b2620',
-            boxShadow: '1.5px 1.5px 0 #2b2620',
-          }}
+          className="w-9 h-9 rounded-full grid place-items-center cursor-pointer"
+          style={{ background: 'rgba(244,236,216,0.08)', border: '1px solid rgba(244,236,216,0.18)' }}
         >
           <svg width="14" height="14" viewBox="0 0 14 14">
-            <path d="M9 2 L4 7 L9 12" stroke="#2b2620" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M9 2 L4 7 L9 12" stroke="#f4ecd8" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
         <div
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded-full backdrop-blur-sm"
-          style={{
-            background: 'rgba(244,236,216,0.92)',
-            border: '1.5px solid #2b2620',
-            boxShadow: '1.5px 1.5px 0 #2b2620',
-          }}
+          className="flex items-center gap-2 px-3.5 py-1.5 rounded-full"
+          style={{ background: 'rgba(244,236,216,0.08)', border: '1px solid rgba(244,236,216,0.18)' }}
         >
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{
-              background: '#a14a3c',
-              boxShadow: '0 0 0 3px rgba(161,74,60,0.25)',
-              animation: 'fadeIn 1s infinite alternate',
-            }}
-          />
-          <span
-            className="font-mono uppercase text-ink"
-            style={{ fontSize: 9, letterSpacing: 1.5 }}
-          >
+          <span className="w-2 h-2 rounded-full" style={{ background: '#a14a3c', animation: 'fadeIn 1s infinite alternate' }} />
+          <span className="font-mono uppercase" style={{ fontSize: 9, letterSpacing: 1.5 }}>
             En rando · {elapsedLabel}
           </span>
         </div>
         <div className="w-9 h-9" />
       </div>
 
-      {/* HUD chips */}
-      <div className="absolute top-[100px] left-4 z-[500] flex flex-col gap-2">
-        <HudChip
-          icon="✦"
-          label="MISSIONS"
-          value={`${completedCount}/${missions.length}`}
-        />
-      </div>
-      <div className="absolute top-[100px] right-4 z-[500] flex flex-col gap-2">
-        <HudChip
-          icon="📏"
-          label="DISTANCE"
-          value={`${sentier.distance_km} km`}
-          align="right"
-        />
-      </div>
-
-      {!userPos && (
-        <div
-          className="absolute top-[170px] left-4 right-4 z-[500] text-center py-2 px-3 rounded-xl backdrop-blur-sm font-body"
-          style={{
-            background: 'rgba(43,38,32,0.85)',
-            color: '#f4ecd8',
-            fontSize: 12,
-          }}
-        >
-          📍 En attente du signal GPS… (accepte la localisation si demandé)
+      {/* ── HUD CHIPS ── */}
+      <div className="flex gap-3 px-4 pt-3 pb-2">
+        <div className="flex-1 rounded-xl px-3 py-2.5" style={{ background: 'rgba(244,236,216,0.07)', border: '1px solid rgba(244,236,216,0.11)' }}>
+          <div className="font-mono uppercase mb-0.5" style={{ fontSize: 8, letterSpacing: 1.5, color: '#6a6558' }}>✦ Missions</div>
+          <div className="font-title font-bold leading-none" style={{ fontSize: 24 }}>{completedCount}/{missions.length}</div>
         </div>
-      )}
-
-      {/* BOTTOM SHEET: progress + next mission / nearby mission */}
-      {/* z-[500] pour passer au-dessus des panes Leaflet internes (z-index 400+) */}
-      <div
-        className="absolute left-0 right-0 bottom-0 z-[500] px-4 pt-3.5 pb-5"
-        style={{ background: 'linear-gradient(to top, #ebe0c2 75%, rgba(235,224,194,0))' }}
-      >
-        <div className="flex items-center gap-2.5 mb-3">
-          <span className="font-mono text-ink-soft" style={{ fontSize: 10, letterSpacing: 1.5 }}>
-            {distanceDone.toFixed(1)} / {sentier.distance_km} km
-          </span>
-          <div
-            className="flex-1 h-1.5 rounded-full relative overflow-hidden"
-            style={{ background: '#d9c79a', border: '1px solid #c9b78a' }}
-          >
-            <div
-              className="absolute inset-0 rounded-full"
-              style={{
-                width: `${pct}%`,
-                background: 'linear-gradient(to right, #4a6b3a, #a14a3c)',
-              }}
-            />
+        <div className="flex-1 rounded-xl px-3 py-2.5 text-right" style={{ background: 'rgba(244,236,216,0.07)', border: '1px solid rgba(244,236,216,0.11)' }}>
+          <div className="font-mono uppercase mb-0.5" style={{ fontSize: 8, letterSpacing: 1.5, color: '#6a6558' }}>📍 Prochaine</div>
+          <div className="font-title font-bold leading-none" style={{ fontSize: 24 }}>
+            {distToNext != null
+              ? distToNext >= 1000 ? `${(distToNext / 1000).toFixed(1)} km` : `${distToNext} m`
+              : '— m'}
           </div>
-          <span className="font-title font-bold text-ink" style={{ fontSize: 16 }}>
-            {pct.toFixed(0)}%
-          </span>
         </div>
+      </div>
 
+      {/* ── CARTE ── */}
+      <div className="px-4">
+        <div
+          className="relative overflow-hidden"
+          style={{ borderRadius: 16, height: 290, border: '1px solid rgba(244,236,216,0.08)' }}
+        >
+          <MapContainer center={mapCenter} zoom={14} zoomControl={false} className="w-full h-full">
+            <TileLayer
+              attribution='© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <RecenterMap position={userPos} />
+            <RouteLayer
+              coords={trackCoords}
+              missions={missions}
+              collected={collected}
+              userPos={userPos}
+              nextMissionId={nextMission?.id}
+            />
+            {userPos && (
+              <>
+                <Marker position={userPos} icon={userIcon} />
+                <Circle center={userPos} radius={30} pathOptions={{ color: '#4a8fff', fillColor: '#4a8fff', fillOpacity: 0.1, weight: 1 }} />
+              </>
+            )}
+            {missions.map(m => (
+              <Marker
+                key={m.id}
+                position={[m.lat, m.lng]}
+                icon={missionIcon(collected.includes(m.id), m.id === nextMission?.id, m)}
+              />
+            ))}
+          </MapContainer>
+
+          {/* Météo */}
+          <WeatherOverlay lat={sentier.lat_depart} lng={sentier.lng_depart} />
+
+          {/* Nom du sentier */}
+          <div
+            className="absolute bottom-2.5 left-2.5 z-[500] px-2.5 py-1.5 rounded-xl backdrop-blur-sm font-mono uppercase"
+            style={{ background: 'rgba(20,18,14,.72)', border: '1px solid rgba(244,236,216,.12)', fontSize: 9, letterSpacing: 1.2, color: '#c9b78a' }}
+          >
+            📍 {sentier.nom}
+          </div>
+
+          {/* GPS en attente */}
+          {!userPos && (
+            <div
+              className="absolute top-2.5 left-2.5 z-[500] px-2.5 py-1.5 rounded-xl font-body"
+              style={{ background: 'rgba(20,18,14,.85)', color: '#c9b78a', fontSize: 11 }}
+            >
+              🔄 GPS en attente…
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── PROFIL ALTIMÉTRIQUE ── */}
+      <div className="px-4 mt-3">
+        <div
+          className="rounded-2xl px-4 pt-3 pb-3"
+          style={{ background: 'rgba(244,236,216,0.04)', border: '1px solid rgba(244,236,216,0.08)' }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-mono uppercase" style={{ fontSize: 8, letterSpacing: 1.5, color: '#6a6558' }}>
+              Profil du parcours
+            </span>
+            {trackCoords.length > 0 && trackCoords[0].length >= 3 && (
+              <span className="font-mono" style={{ fontSize: 9, color: '#b8862e' }}>
+                ↑ {Math.round(Math.max(...trackCoords.map(c => c[2])) - Math.min(...trackCoords.map(c => c[2])))} m
+              </span>
+            )}
+          </div>
+          <ElevationProfile
+            coords={trackCoords}
+            userIdx={userTrackIdx}
+            sentierInfo={sentier}
+          />
+        </div>
+      </div>
+
+      {/* ── CARNET / ÉTAT MISSION ── */}
+      <div className="px-4 mt-3 mb-6">
+
+        {/* ── NEARBY : mission accessible ── */}
         {nearbyMission ? (
           <div
-            className="rounded-2xl px-3.5 py-3 flex items-center gap-3 nearby-pulse"
-            style={{
-              background: '#fff8e6',
-              border: '1.5px solid #2b2620',
-              boxShadow: '2px 2px 0 #2b2620',
-            }}
+            className="rounded-2xl p-4"
+            style={{ background: '#f4ecd8', border: '2px solid #a14a3c', boxShadow: '3px 3px 0 #a14a3c' }}
           >
-            <div
-              className="w-11 h-11 rounded-xl grid place-items-center flex-none text-2xl"
-              style={{
-                background: '#a14a3c',
-                color: '#f4ecd8',
-                border: '1.5px solid #2b2620',
-              }}
-            >
-              {nearbyMission.icone || CATEGORY_EMOJI[nearbyMission.categorie] || '🎯'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-mono uppercase text-ink-mute" style={{ fontSize: 8, letterSpacing: 1.5 }}>
-                Mission à proximité
+            <div className="flex items-center gap-3 mb-3.5">
+              <div
+                className="w-12 h-12 rounded-xl grid place-items-center text-2xl flex-none"
+                style={{ background: '#a14a3c', border: '1.5px solid #2b2620' }}
+              >
+                {nearbyMission.icone || CATEGORY_EMOJI[nearbyMission.categorie] || '🎯'}
               </div>
-              <div className="font-title font-bold text-ink leading-none mt-0.5" style={{ fontSize: 22 }}>
-                {nearbyMission.titre}
+              <div>
+                <div className="font-mono uppercase text-ink-mute" style={{ fontSize: 8, letterSpacing: 1.5 }}>✦ Mission à portée !</div>
+                <div className="font-title font-bold text-ink leading-none" style={{ fontSize: 22 }}>{nearbyMission.titre}</div>
               </div>
             </div>
             <button
               onClick={() => onUnlockMission(nearbyMission)}
-              className="cursor-pointer rounded-full px-3.5 py-2 font-title font-bold"
-              style={{
-                background: '#2b2620',
-                color: '#f4ecd8',
-                fontSize: 16,
-                border: 'none',
-              }}
+              className="w-full h-12 cursor-pointer font-title font-bold flex items-center justify-center gap-2"
+              style={{ background: '#2b2620', color: '#f4ecd8', border: 'none', borderRadius: 12, fontSize: 18, boxShadow: '2px 2px 0 #a14a3c' }}
             >
-              Ouvrir
+              Ouvrir la mission →
             </button>
           </div>
+
         ) : approachingMission ? (
-          /* ── ZONE D'APPROCHE : teaser mystérieux + bouton Ouvrir ── */
+          /* ── APPROACHING : teaser ── */
           <div
-            className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
-            style={{
-              background: 'linear-gradient(135deg, #1c1a14, #2b2620)',
-              border: '1.5px solid #b8862e',
-              boxShadow: '2px 2px 0 #b8862e',
-            }}
+            className="rounded-2xl p-4"
+            style={{ background: 'linear-gradient(135deg,#1c1a14,#2b2620)', border: '1.5px solid #b8862e', boxShadow: '3px 3px 0 #b8862e' }}
           >
-            <div
-              className="w-11 h-11 rounded-xl grid place-items-center flex-none"
-              style={{
-                background: 'rgba(184,134,46,0.15)',
-                border: '1.5px solid #b8862e',
-                animation: 'missionGlowPulse 1.6s ease-in-out infinite',
-                fontSize: 22,
-              }}
-            >
-              👁
-            </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-3.5">
               <div
-                className="font-mono uppercase mb-0.5"
-                style={{ fontSize: 8, letterSpacing: 1.5, color: '#b8862e' }}
+                className="w-12 h-12 rounded-xl grid place-items-center text-2xl flex-none"
+                style={{ background: 'rgba(184,134,46,.15)', border: '1.5px solid #b8862e', animation: 'missionGlowPulse 1.6s ease-in-out infinite' }}
               >
-                ✦ Tu approches de quelque chose…
+                👁
               </div>
-              <div
-                className="font-title font-bold leading-none"
-                style={{ fontSize: 16, color: '#f4ecd8' }}
-              >
-                Ouvre tes sens, continue dans cette direction
+              <div>
+                <div className="font-mono uppercase mb-0.5" style={{ fontSize: 8, letterSpacing: 1.5, color: '#b8862e' }}>✦ Tu approches de quelque chose…</div>
+                <div className="font-title font-bold leading-none" style={{ fontSize: 17, color: '#f4ecd8' }}>
+                  Ouvre tes sens, continue dans cette direction
+                </div>
               </div>
             </div>
             <button
               onClick={() => onUnlockMission(approachingMission)}
-              className="cursor-pointer rounded-full px-3 py-2 font-title font-bold flex-none"
-              style={{
-                background: '#b8862e',
-                color: '#1c1a14',
-                fontSize: 14,
-                border: 'none',
-              }}
+              className="w-full h-11 cursor-pointer font-title font-bold flex items-center justify-center gap-2"
+              style={{ background: '#b8862e', color: '#1c1a14', border: 'none', borderRadius: 12, fontSize: 16 }}
             >
-              Ouvrir
+              Ouvrir →
             </button>
           </div>
+
         ) : nextMission ? (
+          /* ── CARNET NARRATIF — prochaine mission ── */
           <div
-            className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
-            style={{
-              background: '#fff8e6',
-              border: '1.5px solid #2b2620',
-              boxShadow: '2px 2px 0 #2b2620',
-            }}
+            className="rounded-2xl overflow-hidden"
+            style={{ background: '#f4ecd8', border: '1.5px solid #c9b78a', boxShadow: '3px 3px 0 #b8862e' }}
           >
-            <div
-              className="w-11 h-11 rounded-xl grid place-items-center flex-none text-2xl"
-              style={{
-                background: '#a14a3c',
-                color: '#f4ecd8',
-                border: '1.5px solid #2b2620',
-              }}
-            >
-              {nextMission.icone || CATEGORY_EMOJI[nextMission.categorie] || '🎯'}
+            {/* En-tête */}
+            <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+              <div
+                className="w-12 h-12 rounded-xl grid place-items-center text-2xl flex-none"
+                style={{ background: '#a14a3c', border: '1.5px solid #2b2620' }}
+              >
+                {nextMission.icone || CATEGORY_EMOJI[nextMission.categorie] || '🎯'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-mono uppercase text-ink-mute" style={{ fontSize: 8, letterSpacing: 1.3 }}>
+                  Prochaine mission{narrative ? ` · Page ${narrative.page_number} du carnet` : ''}
+                </div>
+                <div className="font-title font-bold text-ink leading-none" style={{ fontSize: 20 }}>
+                  {nextMission.titre}
+                </div>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-mono uppercase text-ink-mute" style={{ fontSize: 8, letterSpacing: 1.5 }}>
-                Prochaine mission
+
+            {/* Séparateur */}
+            <div style={{ height: 1, background: '#d9c79a', margin: '0 16px' }} />
+
+            {/* Extrait du carnet */}
+            {(narrative?.journal_text || nextMission.texte) && (
+              <div className="px-4 pt-3 pb-1">
+                <p className="m-0 font-journal text-ink leading-snug" style={{ fontSize: 17 }}>
+                  📖 «&nbsp;
+                  {expanded
+                    ? (narrative?.journal_text || nextMission.texte)
+                    : (narrative?.journal_text || nextMission.texte).slice(0, 110) + '…'}
+                  &nbsp;»
+                </p>
               </div>
-              <div className="font-title font-bold text-ink leading-none mt-0.5" style={{ fontSize: 22 }}>
-                {nextMission.titre}
-              </div>
+            )}
+
+            {/* Boutons */}
+            <div className="flex gap-2 px-4 pb-4 pt-2.5">
+              <button
+                onClick={toggleTts}
+                className="flex-1 h-10 cursor-pointer font-label flex items-center justify-center gap-1.5 rounded-xl"
+                style={{
+                  background: ttsPlaying ? '#a14a3c' : '#2b2620',
+                  color: '#f4ecd8', border: 'none', fontSize: 13,
+                }}
+              >
+                {ttsPlaying ? (
+                  <><svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="2.5" height="6" fill="currentColor"/><rect x="5.5" y="2" width="2.5" height="6" fill="currentColor"/></svg> Stop</>
+                ) : (
+                  <><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1 L9 5 L2 9 Z" fill="currentColor"/></svg> Écouter</>
+                )}
+              </button>
+              <button
+                onClick={() => setExpanded(e => !e)}
+                className="flex-1 h-10 cursor-pointer font-label flex items-center justify-center rounded-xl"
+                style={{ background: '#fff8e6', color: '#2b2620', border: '1.5px solid #c9b78a', fontSize: 13 }}
+              >
+                {expanded ? 'Réduire ↑' : 'Lire la suite →'}
+              </button>
             </div>
           </div>
+
         ) : (
+          /* ── SENTIER TERMINÉ ── */
           <div
-            className="rounded-2xl px-3.5 py-3 text-center font-title text-ink"
-            style={{
-              background: '#fff8e6',
-              border: '1.5px solid #4a6b3a',
-              boxShadow: '2px 2px 0 #2b2620',
-              fontSize: 20,
-            }}
+            className="rounded-2xl p-5 text-center"
+            style={{ background: '#f4ecd8', border: '1.5px solid #4a6b3a', boxShadow: '3px 3px 0 #4a6b3a' }}
           >
-            🏆 Bravo, sentier terminé !
+            <div style={{ fontSize: 42 }}>🏆</div>
+            <div className="font-title font-bold text-ink mt-2" style={{ fontSize: 28 }}>Sentier terminé !</div>
+            <p className="font-body text-ink-soft mt-1 m-0" style={{ fontSize: 14 }}>
+              Toutes les missions ont été complétées.
+            </p>
           </div>
         )}
       </div>

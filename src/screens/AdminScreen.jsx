@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { supabase } from '../lib/supabase'
 import { parseGpxText, simplifyTrack, elevationStats } from '../lib/parseGpx'
 import { useTrails } from '../hooks/useTrails'
+
+const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || 'ta-2026-azur-admin'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -216,7 +218,6 @@ function TrailForm({ initial, onSaved, onCancel }) {
   const [gpxPoints,   setGpxPoints]   = useState(initial?.gpx_track || [])
   const [gpxFileName, setGpxFileName] = useState(initial?.gpx_track ? '(tracé existant)' : '')
   const [saving,      setSaving]      = useState(false)
-  const [sqlOutput,   setSqlOutput]   = useState(null)
   const [saveError,   setSaveError]   = useState(null)
   const [saved,       setSaved]       = useState(false)
   const fileRef = useRef(null)
@@ -258,39 +259,10 @@ function TrailForm({ initial, onSaved, onCancel }) {
       route_coords: gpxPoints.length > 0 ? gpxPoints.map(p => [p[0], p[1]]) : initial?.route_coords ?? null,
     }
 
-    if (!supabaseAdmin) {
-      // Fallback SQL (VITE_SUPABASE_SERVICE_KEY absente)
-      const track = JSON.stringify(payload.gpx_track).replace(/'/g, "''")
-      const sql =
-        `-- Colle dans Supabase > SQL Editor\n` +
-        `INSERT INTO sentiers (id,nom,description,region,difficulte,duree,distance_km,lat_depart,lng_depart,gpx_track,route_coords)\n` +
-        `VALUES (\n` +
-        `  '${payload.id}',\n` +
-        `  '${(payload.nom         || '').replace(/'/g,"''")}',\n` +
-        `  '${(payload.description || '').replace(/'/g,"''")}',\n` +
-        `  '${(payload.region      || '').replace(/'/g,"''")}',\n` +
-        `  '${payload.difficulte}',\n` +
-        `  '${payload.duree}',\n` +
-        `  ${payload.distance_km ?? 'null'},\n` +
-        `  ${payload.lat_depart  ?? 'null'},\n` +
-        `  ${payload.lng_depart  ?? 'null'},\n` +
-        `  '${track}'::jsonb,\n` +
-        `  '${JSON.stringify(payload.route_coords)}'::jsonb\n` +
-        `)\n` +
-        `ON CONFLICT (id) DO UPDATE SET\n` +
-        `  nom=EXCLUDED.nom, description=EXCLUDED.description,\n` +
-        `  difficulte=EXCLUDED.difficulte, duree=EXCLUDED.duree,\n` +
-        `  distance_km=EXCLUDED.distance_km,\n` +
-        `  lat_depart=EXCLUDED.lat_depart, lng_depart=EXCLUDED.lng_depart,\n` +
-        `  gpx_track=EXCLUDED.gpx_track, route_coords=EXCLUDED.route_coords;`
-      setSqlOutput(sql)
-      setSaving(false)
-      return
-    }
-
-    const { error } = await supabaseAdmin
-      .from('sentiers')
-      .upsert(payload, { onConflict: 'id' })
+    const { error } = await supabase.rpc('admin_save_sentier', {
+      p_token: ADMIN_TOKEN,
+      p_data: payload,
+    })
 
     setSaving(false)
     if (error) { setSaveError(error.message); return }
@@ -419,36 +391,7 @@ function TrailForm({ initial, onSaved, onCancel }) {
         {saved ? '✓ Enregistré !' : saving ? 'Enregistrement…' : 'Enregistrer le sentier →'}
       </button>
 
-      {!supabaseAdmin && !sqlOutput && (
-        <p style={{ fontSize: 11, color: '#4a4540', fontFamily: 'Inter, sans-serif', marginTop: 10, textAlign: 'center' }}>
-          ⚠️ Ajoute <code style={{ color: '#c9b78a' }}>VITE_SUPABASE_SERVICE_KEY</code> dans <code>.env</code> pour sauvegarder directement.
-        </p>
-      )}
 
-      {/* ── SQL fallback ── */}
-      {sqlOutput && (
-        <div className="mt-5">
-          <div style={{ fontSize: 12, color: '#b8862e', fontFamily: 'Inter, sans-serif', marginBottom: 8 }}>
-            ⚠️ Service key absente — copie ce SQL dans Supabase :
-          </div>
-          <textarea readOnly value={sqlOutput}
-            onClick={e => e.target.select()}
-            style={{
-              ...S.field, fontSize: 10, fontFamily: 'monospace', lineHeight: 1.5,
-              height: 180, resize: 'none', color: '#c9b78a',
-            }} />
-          <button onClick={() => navigator.clipboard?.writeText(sqlOutput)}
-            style={{
-              marginTop: 8, background: 'rgba(184,134,46,0.15)',
-              border: '1px solid rgba(184,134,46,0.3)',
-              color: '#b8862e', borderRadius: 8, padding: '8px 16px',
-              fontSize: 13, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
-              width: '100%',
-            }}>
-            📋 Copier le SQL
-          </button>
-        </div>
-      )}
 
       {saveError && (
         <p style={{ color: '#a14a3c', fontSize: 13, marginTop: 10, fontFamily: 'Inter, sans-serif' }}>
@@ -487,24 +430,13 @@ export default function AdminScreen() {
             Terra Azur Explorer
           </div>
         </div>
-        {!supabaseAdmin && (
-          <div style={{
-            fontSize: 9, color: '#b8862e', fontFamily: 'Lora, serif',
-            background: 'rgba(184,134,46,0.1)', border: '1px solid rgba(184,134,46,0.2)',
-            borderRadius: 8, padding: '4px 10px', textAlign: 'center',
-          }}>
-            Mode SQL<br />(sans service key)
-          </div>
-        )}
-        {supabaseAdmin && (
-          <div style={{
-            fontSize: 9, color: '#4a6b3a', fontFamily: 'Lora, serif',
-            background: 'rgba(74,107,58,0.1)', border: '1px solid rgba(74,107,58,0.2)',
-            borderRadius: 8, padding: '4px 10px', textAlign: 'center',
-          }}>
-            ✓ Connecté<br />Supabase
-          </div>
-        )}
+        <div style={{
+          fontSize: 9, color: '#4a6b3a', fontFamily: 'Lora, serif',
+          background: 'rgba(74,107,58,0.1)', border: '1px solid rgba(74,107,58,0.2)',
+          borderRadius: 8, padding: '4px 10px', textAlign: 'center',
+        }}>
+          ✓ Connecté<br />Supabase
+        </div>
       </div>
 
       {/* ── Contenu ── */}

@@ -19,7 +19,14 @@
       "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-bouquetin.jpg.png' public/illustrations/missions/bouquetin.png)",
       "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-chene-liege.jpg.png' public/illustrations/missions/chene-liege.png)",
       "Bash(cp '/c/Users/anton/Desktop/App Terra Azur Explorer/Design Terra-azur explorer/mission-point-de-vue.jpg.png' public/illustrations/missions/sommet-vinaigre.png)",
-      "Bash(git reset *)"
+      "Bash(git reset *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "mcp__c50c3c07-1833-43ad-83b1-41f48d28b832__list_projects",
+      "mcp__c50c3c07-1833-43ad-83b1-41f48d28b832__execute_sql",
+      "mcp__bb4f1de7-df00-491c-bcdb-825eebd5b06a__list_teams",
+      "mcp__bb4f1de7-df00-491c-bcdb-825eebd5b06a__list_deployments",
+      "Bash(npx vite *)"
     ]
   }
 }

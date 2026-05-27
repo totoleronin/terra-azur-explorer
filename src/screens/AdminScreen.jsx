@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
 import { parseGpxText, simplifyTrack, elevationStats } from '../lib/parseGpx'
 import { useTrails } from '../hooks/useTrails'
+import { MissionList, MissionForm } from './MissionAdmin'
 
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || 'ta-2026-azur-admin'
 
@@ -149,7 +150,7 @@ function PinGate({ onUnlock }) {
 
 // ── Liste des sentiers ────────────────────────────────────────────────────────
 
-function TrailList({ onNew, onEdit }) {
+function TrailList({ onNew, onEdit, onMissions }) {
   const { trails, loading } = useTrails()
 
   return (
@@ -172,8 +173,7 @@ function TrailList({ onNew, onEdit }) {
       ) : (
         <div className="flex flex-col gap-3">
           {(trails || []).map(t => (
-            <button key={t.id} onClick={() => onEdit(t)}
-              className="w-full text-left cursor-pointer"
+            <div key={t.id}
               style={{
                 background: 'rgba(244,236,216,0.05)',
                 border: '1px solid rgba(244,236,216,0.1)',
@@ -188,9 +188,30 @@ function TrailList({ onNew, onEdit }) {
                     {t.gpx_track ? <span style={{ color: '#4a6b3a' }}> · ✓ GPX</span> : ''}
                   </div>
                 </div>
-                <span style={{ color: '#c9b78a', fontSize: 18 }}>›</span>
               </div>
-            </button>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => onEdit(t)}
+                  className="cursor-pointer flex-1"
+                  style={{
+                    background: 'rgba(244,236,216,0.06)',
+                    border: '1px solid rgba(244,236,216,0.15)',
+                    borderRadius: 8, padding: '8px 10px',
+                    color: '#c9b78a', fontSize: 12, fontFamily: 'Inter, sans-serif',
+                  }}>
+                  ✎ Fiche sentier
+                </button>
+                <button onClick={() => onMissions(t)}
+                  className="cursor-pointer flex-1"
+                  style={{
+                    background: 'rgba(184,134,46,0.15)',
+                    border: '1px solid rgba(184,134,46,0.35)',
+                    borderRadius: 8, padding: '8px 10px',
+                    color: '#b8862e', fontSize: 12, fontFamily: 'Inter, sans-serif',
+                  }}>
+                  📍 Missions
+                </button>
+              </div>
+            </div>
           ))}
           {trails?.length === 0 && (
             <p style={{ color: '#4a4540', fontSize: 14, fontFamily: 'Inter, sans-serif' }}>
@@ -248,7 +269,7 @@ function TrailForm({ initial, onSaved, onCancel }) {
 
   async function handleSave() {
     if (!form.id || !form.nom) return
-    setSaving(true); setSaveError(null); setSqlOutput(null)
+    setSaving(true); setSaveError(null)
 
     const payload = {
       ...form,
@@ -405,15 +426,32 @@ function TrailForm({ initial, onSaved, onCancel }) {
 // ── AdminScreen ───────────────────────────────────────────────────────────────
 
 export default function AdminScreen() {
-  const [unlocked,     setUnlocked]     = useState(false)
-  const [view,         setView]         = useState('list')   // 'list' | 'form'
-  const [editingTrail, setEditingTrail] = useState(null)
-  const [refreshKey,   setRefreshKey]   = useState(0)
+  const [unlocked,       setUnlocked]       = useState(false)
+  const [view,           setView]           = useState('list')   // 'list' | 'form' | 'missions' | 'mission-form'
+  const [editingTrail,   setEditingTrail]   = useState(null)
+  const [activeTrail,    setActiveTrail]    = useState(null)
+  const [editingMission, setEditingMission] = useState(null)
+  const [missionNarr,    setMissionNarr]    = useState(null)
+  const [refreshKey,     setRefreshKey]     = useState(0)
 
-  function openNew()    { setEditingTrail(null); setView('form') }
-  function openEdit(t)  { setEditingTrail(t);    setView('form') }
-  function onSaved()    { setRefreshKey(k => k + 1); setView('list') }
-  function onCancel()   { setView('list') }
+  function openNew()         { setEditingTrail(null); setView('form') }
+  function openEdit(t)       { setEditingTrail(t);    setView('form') }
+  function openMissions(t)   { setActiveTrail(t);     setView('missions') }
+  function onSaved()         { setRefreshKey(k => k + 1); setView('list') }
+  function onCancel()        { setView('list') }
+
+  async function openMissionEdit(m) {
+    const { data } = await supabase.from('mission_narrative')
+      .select('*').eq('mission_id', m.id).maybeSingle()
+    setMissionNarr(data || null)
+    setEditingMission(m)
+    setView('mission-form')
+  }
+  function openMissionNew() {
+    setEditingMission(null); setMissionNarr(null); setView('mission-form')
+  }
+  function onMissionSaved()  { setRefreshKey(k => k + 1); setView('missions') }
+  function onMissionCancel() { setView('missions') }
 
   if (!unlocked) return <PinGate onUnlock={() => setUnlocked(true)} />
 
@@ -441,10 +479,19 @@ export default function AdminScreen() {
 
       {/* ── Contenu ── */}
       <div className="px-5 py-5">
-        {view === 'list' ? (
-          <TrailList key={refreshKey} onNew={openNew} onEdit={openEdit} />
-        ) : (
+        {view === 'list' && (
+          <TrailList key={refreshKey} onNew={openNew} onEdit={openEdit} onMissions={openMissions} />
+        )}
+        {view === 'form' && (
           <TrailForm initial={editingTrail} onSaved={onSaved} onCancel={onCancel} />
+        )}
+        {view === 'missions' && activeTrail && (
+          <MissionList key={refreshKey} trail={activeTrail}
+            onBack={onCancel} onEdit={openMissionEdit} onNew={openMissionNew} />
+        )}
+        {view === 'mission-form' && activeTrail && (
+          <MissionForm trail={activeTrail} initial={editingMission} narrativeInitial={missionNarr}
+            onSaved={onMissionSaved} onCancel={onMissionCancel} />
         )}
       </div>
     </div>

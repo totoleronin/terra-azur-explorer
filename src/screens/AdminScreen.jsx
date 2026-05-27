@@ -91,7 +91,7 @@ function GpxPreviewMap({ points }) {
 function PinGate({ onUnlock }) {
   const [pin, setPin] = useState('')
   const [shake, setShake] = useState(false)
-  const expected = import.meta.env.VITE_ADMIN_PIN || '1234'
+  const expected = '2626'
 
   function submit(e) {
     e.preventDefault()
@@ -142,7 +142,7 @@ function PinGate({ onUnlock }) {
       </form>
 
       <p style={{ fontSize: 10, color: '#3a3730', fontFamily: 'Lora, serif', textAlign: 'center', maxWidth: 220 }}>
-        Défini par VITE_ADMIN_PIN dans .env<br />(défaut : 1234)
+        Terra Azur Admin
       </p>
     </div>
   )

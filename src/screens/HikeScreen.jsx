@@ -5,17 +5,11 @@ import 'leaflet/dist/leaflet.css'
 import { distanceMetres } from '../lib/geo'
 import { useMissionNarrative } from '../hooks/useNarrative'
 import { useWeather } from '../hooks/useWeather'
+import { supabase } from '../lib/supabase'
 
-const CATEGORY_EMOJI = { Plante: '🌿', Animal: '🦌', 'Géologie': '🪨', 'Point de vue': '🏔️' }
+// ── Icônes Leaflet — cercle minimaliste + numéro de page ──────────────────────
 
-// ── Icônes Leaflet ────────────────────────────────────────────────────────────
-
-function missionIcon(done, isApproaching, isNearby, mission) {
-  const emoji = done ? '✓' : (mission?.icone || CATEGORY_EMOJI[mission?.categorie] || '🎯')
-  const bg    = done ? '#4a6b3a' : (isNearby || isApproaching) ? '#a14a3c' : '#2e2b26'
-  const bord  = done ? '#c9c4b8' : (isNearby || isApproaching) ? '#f4ecd8' : '#4a4540'
-
-  // Halo animé : rouge intense (nearby) ou or lent (approaching)
+function missionIcon(done, isApproaching, isNearby, pageNum) {
   let halo = ''
   if (isNearby) {
     halo = `<div style="
@@ -31,19 +25,39 @@ function missionIcon(done, isApproaching, isNearby, mission) {
     "></div>`
   }
 
+  const symbol = done ? '✓' : '?'
+  const bg     = done ? '#4a6b3a' : isNearby ? '#a14a3c' : '#1e1b18'
+  const border = done
+    ? 'rgba(201,183,138,0.55)' : isNearby
+    ? 'rgba(244,236,216,0.7)'  : 'rgba(201,183,138,0.35)'
+  const pageLabel = pageNum != null ? `p.${pageNum}` : ''
+
   return L.divIcon({
     className: 'mission-marker-icon',
-    html: `<div style="position:relative;width:40px;height:40px;">
+    html: `<div style="position:relative;width:36px;height:50px;display:flex;flex-direction:column;align-items:center;gap:2px;">
       ${halo}
       <div style="
-        position:relative;z-index:2;width:40px;height:40px;
-        background:${bg};border:2.5px solid ${bord};
-        box-shadow:0 0 0 1.5px ${done ? '#4a6b3a' : '#2b2620'},0 4px 12px rgba(0,0,0,.55);
-        border-radius:50%;display:flex;align-items:center;justify-content:center;
-        font-size:${done ? '14px' : '18px'};color:#f4ecd8;
-      ">${emoji}</div>
+        position:relative;z-index:2;
+        width:36px;height:36px;
+        background:${bg};
+        border:1.5px solid ${border};
+        box-shadow:0 2px 10px rgba(0,0,0,0.65),0 0 0 1px rgba(0,0,0,0.3);
+        border-radius:50%;
+        display:flex;align-items:center;justify-content:center;
+        font-size:15px;font-weight:700;
+        color:#f4ecd8;
+        font-family:Inter,sans-serif;
+      ">${symbol}</div>
+      ${pageLabel ? `<div style="
+        position:relative;z-index:2;
+        font-size:9px;color:rgba(244,236,216,0.85);
+        font-family:'Lora',serif;letter-spacing:0.3px;
+        text-shadow:0 1px 3px rgba(0,0,0,0.9);
+        white-space:nowrap;
+      ">${pageLabel}</div>` : ''}
     </div>`,
-    iconSize: [40, 40], iconAnchor: [20, 20],
+    iconSize: [36, 50],
+    iconAnchor: [18, 18],
   })
 }
 
@@ -203,12 +217,25 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
   const [drawerOpen,         setDrawerOpen]         = useState(false)
   const [ttsPlaying,         setTtsPlaying]         = useState(false)
   const [expanded,           setExpanded]           = useState(false)
+  // Tracé frais depuis Supabase — remplace toujours la version en cache de l'app
+  const [liveSentier,        setLiveSentier]        = useState(sentier)
 
   const watchRef         = useRef(null)
   const startRef         = useRef(Date.now())
   const utteranceRef     = useRef(null)
   const touchStartY      = useRef(null)
-  const autoOpenedKeyRef = useRef(null) // évite re-ouverture après swipe fermeture
+  const autoOpenedKeyRef = useRef(null)
+
+  // ── Rechargement du tracé GPX depuis Supabase au montage ──
+  useEffect(() => {
+    if (!sentier?.id) return
+    supabase
+      .from('sentiers')
+      .select('gpx_track, route_coords, lat_depart, lng_depart, distance_km, nom, peak_ele, start_ele')
+      .eq('id', sentier.id)
+      .single()
+      .then(({ data }) => { if (data) setLiveSentier(prev => ({ ...prev, ...data })) })
+  }, [sentier?.id])
 
   const completedCount = missions.filter(m => collected.includes(m.id)).length
   const nextMission    = missions.find(m => !collected.includes(m.id))
@@ -217,8 +244,8 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
   const drawerMission = nearbyMission ?? approachingMission
 
   const narrative    = useMissionNarrative(drawerMission?.id)
-  const trackCoords  = getTrackCoords(sentier)
-  const mapCenter    = userPos || [sentier.lat_depart, sentier.lng_depart]
+  const trackCoords  = getTrackCoords(liveSentier)
+  const mapCenter    = userPos || [liveSentier.lat_depart, liveSentier.lng_depart]
   const userTrackIdx = userPos ? closestIdx(trackCoords, userPos[0], userPos[1]) : 0
 
   const distToNext = userPos && nextMission
@@ -354,7 +381,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
             const isApproach = !done && approachingMission?.id === m.id
             return (
               <Marker key={m.id} position={[m.lat, m.lng]}
-                icon={missionIcon(done, isApproach, isNearby, m)} />
+                icon={missionIcon(done, isApproach, isNearby, m.page_number ?? (missions.indexOf(m) + 1))} />
             )
           })}
         </MapContainer>
@@ -392,7 +419,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
         </div>
 
         {/* Météo */}
-        <WeatherChip lat={sentier.lat_depart} lng={sentier.lng_depart} />
+        <WeatherChip lat={liveSentier.lat_depart} lng={liveSentier.lng_depart} />
       </div>
 
       {/* ══ CHIPS HUD ══ */}
@@ -454,7 +481,7 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
             pointerEvents: 'none',
           }}
         >
-          <ElevationOverlay coords={trackCoords} userIdx={userTrackIdx} sentierInfo={sentier} />
+          <ElevationOverlay coords={trackCoords} userIdx={userTrackIdx} sentierInfo={liveSentier} />
         </div>
       )}
 

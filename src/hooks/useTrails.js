@@ -55,12 +55,16 @@ export function useMissions(sentierId) {
     if (!sentierId) return
     async function load() {
       try {
-        const { data, error } = await supabase
-          .from('missions')
-          .select('*')
-          .eq('sentier_id', sentierId)
+        const [{ data: mData, error }, { data: nData }] = await Promise.all([
+          supabase.from('missions').select('*').eq('sentier_id', sentierId),
+          supabase.from('mission_narrative').select('mission_id, page_number'),
+        ])
         if (error) throw error
-        setMissions(data && data.length > 0 ? data : MISSIONS.filter(m => m.sentier_id === sentierId))
+        const pageMap = Object.fromEntries((nData || []).map(n => [n.mission_id, n.page_number]))
+        const merged = (mData && mData.length > 0 ? mData : MISSIONS.filter(m => m.sentier_id === sentierId))
+          .map(m => ({ ...m, page_number: pageMap[m.id] ?? null }))
+          .sort((a, b) => (a.page_number ?? 99) - (b.page_number ?? 99))
+        setMissions(merged)
       } catch {
         setMissions(MISSIONS.filter(m => m.sentier_id === sentierId))
       } finally {

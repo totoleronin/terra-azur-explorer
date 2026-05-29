@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
-import { parseGpxText, simplifyTrack, elevationStats } from '../lib/parseGpx'
+import { parseGpxFull, simplifyTrack, trackStats, naismithMinutes, formatDuration } from '../lib/parseGpx'
 import { useTrails } from '../hooks/useTrails'
 import { MissionList, MissionForm } from './MissionAdmin'
 
@@ -151,7 +151,7 @@ function PinGate({ onUnlock }) {
 // ── Liste des sentiers ────────────────────────────────────────────────────────
 
 function TrailList({ onNew, onEdit, onMissions }) {
-  const { trails, loading } = useTrails()
+  const { sentiers: trails, loading } = useTrails()
 
   return (
     <div>
@@ -238,12 +238,24 @@ function TrailForm({ initial, onSaved, onCancel }) {
   })
   const [gpxPoints,   setGpxPoints]   = useState(initial?.gpx_track || [])
   const [gpxFileName, setGpxFileName] = useState(initial?.gpx_track ? '(tracé existant)' : '')
+  const [gpxStats,    setGpxStats]    = useState(
+    initial && (initial.denivele_pos != null || initial.distance_km != null)
+      ? {
+          distance_km:  initial.distance_km ?? null,
+          denivele_pos: initial.denivele_pos ?? null,
+          denivele_neg: initial.denivele_neg ?? null,
+          alt_min:      initial.alt_min ?? null,
+          alt_max:      initial.alt_max ?? null,
+        }
+      : null
+  )
+  const [gpxWaypoints,  setGpxWaypoints]  = useState([])
+  const [importingWpts, setImportingWpts] = useState(false)
+  const [wptResult,     setWptResult]     = useState(null)
   const [saving,      setSaving]      = useState(false)
   const [saveError,   setSaveError]   = useState(null)
   const [saved,       setSaved]       = useState(false)
   const fileRef = useRef(null)
-
-  const ele = gpxPoints.length > 0 ? elevationStats(gpxPoints) : null
 
   function setField(k, v) {
     setForm(f => ({
@@ -256,39 +268,102 @@ function TrailForm({ initial, onSaved, onCancel }) {
     const file = e.target.files[0]
     if (!file) return
     setGpxFileName(file.name)
+    setSaveError(null); setWptResult(null)
     const reader = new FileReader()
     reader.onload = ev => {
-      const raw = parseGpxText(ev.target.result)
+      const full = parseGpxFull(ev.target.result)
+      const raw = full.points
+      if (!raw || raw.length < 2) { setSaveError('GPX illisible ou sans tracé (<trkpt>).'); return }
+
       const pts = simplifyTrack(raw, 80)
       setGpxPoints(pts)
-      // Auto-remplir départ depuis le premier point
+
+      // Stats calculées sur le tracé COMPLET pour la précision
+      const stats = trackStats(raw)
+      setGpxStats(stats)
+      setGpxWaypoints(full.waypoints || [])
+
+      // Auto-remplissage des champs
+      setForm(f => {
+        const nextNom = f.nom || full.name || ''
+        return {
+          ...f,
+          nom: nextNom,
+          id: (!initial?.id && !f.id) ? slugify(nextNom) : f.id,
+          distance_km: stats?.distance_km != null ? String(stats.distance_km) : f.distance_km,
+          duree: stats
+            ? formatDuration(naismithMinutes(stats.distance_km, stats.denivele_pos))
+            : f.duree,
+        }
+      })
     }
     reader.readAsText(file)
     e.target.value = ''
+  }
+
+  function buildPayload() {
+    return {
+      ...form,
+      distance_km:  parseFloat(form.distance_km) || (gpxStats?.distance_km ?? null),
+      lat_depart:   gpxPoints[0]?.[0] ?? initial?.lat_depart ?? null,
+      lng_depart:   gpxPoints[0]?.[1] ?? initial?.lng_depart ?? null,
+      gpx_track:    gpxPoints.length > 0 ? gpxPoints                       : initial?.gpx_track ?? null,
+      route_coords: gpxPoints.length > 0 ? gpxPoints.map(p => [p[0], p[1]]) : initial?.route_coords ?? null,
+      denivele_pos: gpxStats?.denivele_pos ?? initial?.denivele_pos ?? null,
+      denivele_neg: gpxStats?.denivele_neg ?? initial?.denivele_neg ?? null,
+      alt_min:      gpxStats?.alt_min      ?? initial?.alt_min      ?? null,
+      alt_max:      gpxStats?.alt_max      ?? initial?.alt_max      ?? null,
+    }
   }
 
   async function handleSave() {
     if (!form.id || !form.nom) return
     setSaving(true); setSaveError(null)
 
-    const payload = {
-      ...form,
-      distance_km: parseFloat(form.distance_km) || null,
-      lat_depart:  gpxPoints[0]?.[0] ?? initial?.lat_depart ?? null,
-      lng_depart:  gpxPoints[0]?.[1] ?? initial?.lng_depart ?? null,
-      gpx_track:   gpxPoints.length > 0 ? gpxPoints        : initial?.gpx_track ?? null,
-      route_coords: gpxPoints.length > 0 ? gpxPoints.map(p => [p[0], p[1]]) : initial?.route_coords ?? null,
-    }
-
     const { error } = await supabase.rpc('admin_save_sentier', {
       p_token: ADMIN_TOKEN,
-      p_data: payload,
+      p_data: buildPayload(),
     })
 
     setSaving(false)
     if (error) { setSaveError(error.message); return }
     setSaved(true)
     setTimeout(() => { setSaved(false); onSaved() }, 1200)
+  }
+
+  // ── Feature 3 : import des waypoints GPX en missions pré-positionnées ──
+  async function importWaypoints() {
+    if (!form.id || !form.nom) { setSaveError('Renseigne le nom du sentier avant d’importer les waypoints.'); return }
+    setImportingWpts(true); setSaveError(null); setWptResult(null)
+
+    // Le sentier doit exister en base (clé étrangère sentier_id) → on le sauve d’abord
+    const sres = await supabase.rpc('admin_save_sentier', { p_token: ADMIN_TOKEN, p_data: buildPayload() })
+    if (sres.error) { setImportingWpts(false); setSaveError(sres.error.message); return }
+
+    let ok = 0, fail = 0
+    const used = new Set()
+    for (let i = 0; i < gpxWaypoints.length; i++) {
+      const w = gpxWaypoints[i]
+      const titre = (w.name && w.name.trim()) || `Point ${i + 1}`
+      let mid = slugify(titre) || `waypoint-${i + 1}`
+      while (used.has(mid)) mid = `${mid}-${i + 1}`
+      used.add(mid)
+
+      const { error } = await supabase.rpc('admin_save_mission', {
+        p_token: ADMIN_TOKEN,
+        p_mission: {
+          id: mid, sentier_id: form.id, titre,
+          categorie: 'Point de vue', icone: '📍',
+          lat: w.lat, lng: w.lng,
+          rayon_metres: 50, rayon_approche_metres: 200,
+          texte: w.desc || '', question: '', choix: ['', '', ''], bonne_reponse: 0, indice: '',
+        },
+        p_narrative: null,
+      })
+      if (error) fail++; else ok++
+    }
+    setImportingWpts(false)
+    setWptResult({ ok, fail })
   }
 
   return (
@@ -375,11 +450,42 @@ function TrailForm({ initial, onSaved, onCancel }) {
           transition: 'all 0.2s',
         }}>
         {gpxPoints.length > 0
-          ? `✓ ${gpxFileName}  ·  ${gpxPoints.length} pts${ele ? `  ·  ↑ ${ele.delta}m  (${ele.min}–${ele.max}m)` : ''}`
+          ? `✓ ${gpxFileName}  ·  ${gpxPoints.length} pts`
           : '📂  Importer un fichier .gpx'}
       </button>
       <input ref={fileRef} type="file" accept=".gpx,.xml"
         style={{ display: 'none' }} onChange={handleGpx} />
+
+      {/* ── Stats auto-calculées depuis le GPX ── */}
+      {gpxStats && (
+        <div className="mb-4" style={{
+          background: 'rgba(184,134,46,0.07)', border: '1px solid rgba(184,134,46,0.25)',
+          borderRadius: 12, padding: 14,
+        }}>
+          <div style={{ fontSize: 9, letterSpacing: 1.5, color: '#b8862e', fontFamily: 'Lora, serif', textTransform: 'uppercase', marginBottom: 10 }}>
+            Calculé automatiquement
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              ['Distance', gpxStats.distance_km != null ? `${gpxStats.distance_km} km` : '—'],
+              ['Dénivelé +', gpxStats.denivele_pos != null ? `${gpxStats.denivele_pos} m` : '—'],
+              ['Dénivelé −', gpxStats.denivele_neg != null ? `${gpxStats.denivele_neg} m` : '—'],
+              ['Alt. min', gpxStats.alt_min != null ? `${gpxStats.alt_min} m` : '—'],
+              ['Alt. max', gpxStats.alt_max != null ? `${gpxStats.alt_max} m` : '—'],
+              ['Durée (Naismith)', gpxStats.distance_km != null
+                ? formatDuration(naismithMinutes(gpxStats.distance_km, gpxStats.denivele_pos || 0)) : '—'],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <div style={{ fontSize: 9, color: '#6a6558', fontFamily: 'Lora, serif', textTransform: 'uppercase', letterSpacing: 1 }}>{k}</div>
+                <div style={{ ...S.title, fontSize: 19, color: '#f4ecd8' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#4a4540', fontFamily: 'Inter, sans-serif', marginTop: 10 }}>
+            Pré-rempli dans les champs ci-dessus — modifiable manuellement.
+          </div>
+        </div>
+      )}
 
       {/* ── Aperçu carte ── */}
       {gpxPoints.length >= 2 && (
@@ -387,13 +493,51 @@ function TrailForm({ initial, onSaved, onCancel }) {
           <GpxPreviewMap points={gpxPoints} />
           <div className="flex justify-between mt-2 px-1">
             <span style={{ fontSize: 10, color: '#4a6b3a', fontFamily: 'Lora, serif' }}>● Départ</span>
-            {ele && (
+            {gpxStats?.denivele_pos != null && (
               <span style={{ fontSize: 10, color: '#b8862e', fontFamily: 'Lora, serif' }}>
-                Dénivelé +{ele.delta} m
+                Dénivelé +{gpxStats.denivele_pos} m
               </span>
             )}
             <span style={{ fontSize: 10, color: '#a14a3c', fontFamily: 'Lora, serif' }}>● Arrivée</span>
           </div>
+        </div>
+      )}
+
+      {/* ── Import des waypoints GPX en missions ── */}
+      {gpxWaypoints.length > 0 && (
+        <div className="mb-6" style={{
+          background: 'rgba(28,79,76,0.08)', border: '1px solid rgba(28,79,76,0.3)',
+          borderRadius: 12, padding: 14,
+        }}>
+          <div style={{ ...S.title, fontSize: 17, color: '#3a8a82', marginBottom: 6 }}>
+            📍 {gpxWaypoints.length} waypoint{gpxWaypoints.length > 1 ? 's' : ''} détecté{gpxWaypoints.length > 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 12, color: '#8a7e6c', fontFamily: 'Inter, sans-serif', lineHeight: 1.5, marginBottom: 10 }}>
+            Convertis-les en missions pré-positionnées (catégorie « Point de vue » par défaut, contenu à compléter ensuite).
+          </div>
+          <div className="flex flex-col gap-1 mb-3" style={{ maxHeight: 120, overflowY: 'auto' }}>
+            {gpxWaypoints.map((w, i) => (
+              <div key={i} style={{ fontSize: 12, color: '#c9b78a', fontFamily: 'Inter, sans-serif' }}>
+                • {(w.name && w.name.trim()) || `Point ${i + 1}`}
+                <span style={{ color: '#4a4540', fontFamily: 'monospace', fontSize: 10 }}> — {w.lat.toFixed(5)}, {w.lng.toFixed(5)}</span>
+              </div>
+            ))}
+          </div>
+          {wptResult ? (
+            <p style={{ fontSize: 13, color: wptResult.fail ? '#a14a3c' : '#4a6b3a', fontFamily: 'Inter, sans-serif', margin: 0 }}>
+              ✓ {wptResult.ok} mission{wptResult.ok > 1 ? 's' : ''} créée{wptResult.ok > 1 ? 's' : ''}{wptResult.fail ? ` · ${wptResult.fail} échec(s)` : ''}. Ouvre l’onglet « Missions » du sentier pour les compléter.
+            </p>
+          ) : (
+            <button onClick={importWaypoints} disabled={importingWpts}
+              className="w-full cursor-pointer"
+              style={{
+                background: 'rgba(28,79,76,0.25)', border: '1px solid rgba(28,79,76,0.5)',
+                borderRadius: 10, padding: '10px 14px', color: '#3a8a82',
+                fontFamily: 'Inter, sans-serif', fontSize: 13, opacity: importingWpts ? 0.6 : 1,
+              }}>
+              {importingWpts ? 'Import en cours…' : `Convertir en ${gpxWaypoints.length} mission${gpxWaypoints.length > 1 ? 's' : ''} →`}
+            </button>
+          )}
         </div>
       )}
 
@@ -432,6 +576,7 @@ export default function AdminScreen() {
   const [activeTrail,    setActiveTrail]    = useState(null)
   const [editingMission, setEditingMission] = useState(null)
   const [missionNarr,    setMissionNarr]    = useState(null)
+  const [pendingPos,     setPendingPos]     = useState(null)
   const [refreshKey,     setRefreshKey]     = useState(0)
 
   function openNew()         { setEditingTrail(null); setView('form') }
@@ -444,11 +589,14 @@ export default function AdminScreen() {
     const { data } = await supabase.from('mission_narrative')
       .select('*').eq('mission_id', m.id).maybeSingle()
     setMissionNarr(data || null)
+    setPendingPos(null)
     setEditingMission(m)
     setView('mission-form')
   }
-  function openMissionNew() {
-    setEditingMission(null); setMissionNarr(null); setView('mission-form')
+  function openMissionNew(pos) {
+    setEditingMission(null); setMissionNarr(null)
+    setPendingPos(Array.isArray(pos) ? pos : null)
+    setView('mission-form')
   }
   function onMissionSaved()  { setRefreshKey(k => k + 1); setView('missions') }
   function onMissionCancel() { setView('missions') }
@@ -491,7 +639,7 @@ export default function AdminScreen() {
         )}
         {view === 'mission-form' && activeTrail && (
           <MissionForm trail={activeTrail} initial={editingMission} narrativeInitial={missionNarr}
-            onSaved={onMissionSaved} onCancel={onMissionCancel} />
+            initialPos={pendingPos} onSaved={onMissionSaved} onCancel={onMissionCancel} />
         )}
       </div>
     </div>

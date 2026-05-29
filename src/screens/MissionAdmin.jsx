@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { MapContainer, TileLayer, Polyline, Marker, Circle, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, Marker, Circle, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
 
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || 'ta-2026-azur-admin'
 
-const CATEGORIES = ['Plante', 'Animal', 'Géologie', 'Point de vue', 'Histoire', 'Patrimoine']
+const CATEGORIES = ['Animal', 'Plante', 'Géologie', 'Point de vue', 'Escalade', 'Patrimoine']
 
 const S = {
   field: {
@@ -43,6 +43,13 @@ function FitBounds({ coords }) {
   return null
 }
 
+function MapClickHandler({ onPick }) {
+  useMapEvents({
+    click(e) { onPick([e.latlng.lat, e.latlng.lng]) },
+  })
+  return null
+}
+
 function pinIcon(color, label) {
   return L.divIcon({
     className: '',
@@ -57,6 +64,12 @@ export function MissionList({ trail, onBack, onEdit, onNew }) {
   const [missions, setMissions] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  const track = trail.gpx_track || trail.route_coords || []
+  const hasTrack = track.length >= 2
+  const mapCenter = hasTrack
+    ? [track[Math.floor(track.length / 2)][0], track[Math.floor(track.length / 2)][1]]
+    : [trail.lat_depart || 43.7, trail.lng_depart || 7.2]
 
   useEffect(() => {
     async function load() {
@@ -99,7 +112,30 @@ export function MissionList({ trail, onBack, onEdit, onNew }) {
         </div>
       </div>
 
-      <button onClick={onNew}
+      {/* ── Carte d'ensemble : clic sur le tracé pour placer une mission ── */}
+      {hasTrack && (
+        <div className="mb-3">
+          <div style={{ borderRadius: 14, overflow: 'hidden', border: '1.5px solid rgba(184,134,46,0.4)', height: 260 }}>
+            <MapContainer center={mapCenter} zoom={14} zoomControl={true} style={{ width: '100%', height: '100%' }}>
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <FitBounds coords={track} />
+              <Polyline positions={track.map(p => [p[0], p[1]])}
+                pathOptions={{ color: '#a14a3c', weight: 4, opacity: 0.85 }} />
+              <MapClickHandler onPick={(p) => onNew(p)} />
+              {missions.filter(m => m.lat != null && m.lng != null).map(m => (
+                <Marker key={m.id} position={[m.lat, m.lng]}
+                  icon={pinIcon('#4a6b3a', m.icone || '📍')}
+                  eventHandlers={{ click: () => onEdit(m) }} />
+              ))}
+            </MapContainer>
+          </div>
+          <p style={{ fontSize: 11, color: '#6a6558', fontFamily: 'Lora, serif', marginTop: 6, textAlign: 'center' }}>
+            👆 Clique sur la carte pour créer une mission à cet endroit
+          </p>
+        </div>
+      )}
+
+      <button onClick={() => onNew()}
         className="w-full cursor-pointer mb-5"
         style={{
           background: '#b8862e', color: '#1c1a14', border: 'none',
@@ -153,7 +189,7 @@ export function MissionList({ trail, onBack, onEdit, onNew }) {
 
 // ── Formulaire mission avec slider de placement ──────────────────────────────
 
-export function MissionForm({ trail, initial, narrativeInitial, onSaved, onCancel }) {
+export function MissionForm({ trail, initial, narrativeInitial, initialPos, onSaved, onCancel }) {
   const track = trail.gpx_track || trail.route_coords || []
   const hasTrack = track.length >= 2
 
@@ -169,8 +205,10 @@ export function MissionForm({ trail, initial, narrativeInitial, onSaved, onCance
   }, [initial, track])
 
   const [trackIdx, setTrackIdx] = useState(initialIdx)
-  const [customPos, setCustomPos] = useState(initial ? [initial.lat, initial.lng] : null)
-  const [useCustom, setUseCustom] = useState(false)
+  const [customPos, setCustomPos] = useState(
+    initial ? [initial.lat, initial.lng] : (Array.isArray(initialPos) ? initialPos : null)
+  )
+  const [useCustom, setUseCustom] = useState(!initial && Array.isArray(initialPos))
 
   const pos = useCustom && customPos
     ? customPos
@@ -266,6 +304,7 @@ export function MissionForm({ trail, initial, narrativeInitial, onSaved, onCance
             <MapContainer center={center} zoom={14} zoomControl={true} style={{ width: '100%', height: '100%' }}>
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <FitBounds coords={track} />
+              <MapClickHandler onPick={(p) => { setCustomPos(p); setUseCustom(true) }} />
               <Polyline positions={track.map(p => [p[0], p[1]])}
                 pathOptions={{ color: '#a14a3c', weight: 4, opacity: 0.85 }} />
               <Circle center={pos} radius={form.rayon_metres}
@@ -286,7 +325,7 @@ export function MissionForm({ trail, initial, narrativeInitial, onSaved, onCance
           </div>
 
           <div className="mb-1 flex items-center justify-between" style={{ fontSize: 11, color: '#6a6558', fontFamily: 'Lora, serif' }}>
-            <span>Slider : début du tracé → fin</span>
+            <span>Slider, clic carte ou drag du marqueur</span>
             <span>{useCustom ? '📍 Position personnalisée' : `Point ${trackIdx + 1}/${track.length}`}</span>
           </div>
           <input

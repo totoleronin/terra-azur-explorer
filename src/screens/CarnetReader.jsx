@@ -82,7 +82,7 @@ function formatDate(iso) {
   } catch { return null }
 }
 
-export default function CarnetReader({ carnet, team, souvenir, onClose }) {
+export default function CarnetReader({ carnet, team, souvenir, souvenirByMission = {}, onClose }) {
   const scrollRef = useRef(null)
   const [page, setPage] = useState(0)
 
@@ -164,7 +164,10 @@ export default function CarnetReader({ carnet, team, souvenir, onClose }) {
         </PageShell>
 
         {/* ── Pages des missions ── */}
-        {pages.map((p) => (
+        {pages.map((p) => {
+          const isFinale = !!p.mission.mission_finale
+          const sv = souvenirByMission[p.mission.id]
+          return (
           <PageShell key={p.mission.id}>
             <div className="flex items-center justify-between mb-3">
               <span style={{ ...S.label }}>{p.mission.categorie}</span>
@@ -173,8 +176,24 @@ export default function CarnetReader({ carnet, team, souvenir, onClose }) {
 
             <div className="relative rounded-2xl overflow-hidden mb-4"
               style={{ aspectRatio: '4/3', border: '2px solid #8a6d3a' }}>
-              <MissionIllustration mission={p.mission} state={p.unlocked ? 'unlocked' : 'locked'} />
-              {!p.unlocked && <StampToFind />}
+              {isFinale ? (
+                sv ? (
+                  <img src={sv.dataUrl} alt={p.mission.titre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div className="absolute inset-0 grid place-items-center text-center px-6"
+                    style={{ background: 'repeating-linear-gradient(45deg, #2a2820 0 14px, #24221b 14px 28px)' }}>
+                    <div>
+                      <div style={{ fontSize: 30, marginBottom: 8 }}>📷</div>
+                      <p style={{ ...S.label, lineHeight: 1.5 }}>Page à révéler<br />par ta photo souvenir</p>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <>
+                  <MissionIllustration mission={p.mission} state={p.unlocked ? 'unlocked' : 'locked'} />
+                  {!p.unlocked && <StampToFind />}
+                </>
+              )}
             </div>
 
             {p.unlocked ? (
@@ -189,11 +208,14 @@ export default function CarnetReader({ carnet, team, souvenir, onClose }) {
               </>
             ) : (
               <p className="font-journal text-center" style={{ color: '#8a7e6c', fontSize: 19 }}>
-                Cette page se révélera lorsque tu auras atteint ce point de l’exploration.
+                {isFinale
+                  ? 'Atteins le point de vue et prends ta photo pour révéler cette page.'
+                  : 'Cette page se révélera lorsque tu auras atteint ce point de l’exploration.'}
               </p>
             )}
           </PageShell>
-        ))}
+          )
+        })}
 
         {/* ── Page finale / clôture ── */}
         <PageShell>

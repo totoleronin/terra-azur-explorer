@@ -35,6 +35,21 @@ export default function App() {
     catch { return {} }
   })
 
+  // Souvenirs photo / cartes postales (tout en local)
+  const [souvenirs, setSouvenirs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('terra.souvenirs') || '[]') }
+    catch { return [] }
+  })
+
+  function addSouvenir(s) {
+    setSouvenirs(prev => {
+      // un souvenir par mission : on remplace l'éventuel précédent
+      const next = [...prev.filter(x => x.missionId !== s.missionId), s]
+      localStorage.setItem('terra.souvenirs', JSON.stringify(next))
+      return next
+    })
+  }
+
   function collect(missionId) {
     setCollected(prev => {
       if (prev.includes(missionId)) return prev
@@ -109,6 +124,9 @@ export default function App() {
         <div className="absolute inset-0 z-50">
           <MissionScreen
             mission={activeMission}
+            trail={selectedTrail}
+            team={team}
+            onSouvenir={addSouvenir}
             onComplete={completeMission}
             onClose={() => setScreen('hike')}
           />
@@ -158,7 +176,7 @@ export default function App() {
 
       {/* ── Carnet ── */}
       <div className={`absolute inset-0 ${tab === 'collection' && screen === 'explore' ? 'block' : 'hidden'}`}>
-        <CarnetScreen collected={collected} collectedAt={collectedAt} team={team} />
+        <CarnetScreen collected={collected} collectedAt={collectedAt} team={team} souvenirs={souvenirs} />
       </div>
 
       {/* ── Profil ── */}

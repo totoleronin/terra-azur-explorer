@@ -81,19 +81,28 @@ function CarnetCard({ carnet, onOpen }) {
   )
 }
 
-export default function CarnetScreen({ collected = [], collectedAt = {}, team }) {
+export default function CarnetScreen({ collected = [], collectedAt = {}, team, souvenirs = [] }) {
   const { carnets, loading } = useCarnets(collected, collectedAt)
   const [sub, setSub] = useState('carnets')
   const [openCarnet, setOpenCarnet] = useState(null)
 
   const badges = useMemo(() => computeBadges(carnets), [carnets])
   const unlockedPages = useMemo(() => carnets.flatMap(c => c.pages).filter(p => p.unlocked), [carnets])
-  const souvenirs = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('terra.souvenirs') || '[]') } catch { return [] }
-  }, [])
+  const souvenirByMission = useMemo(
+    () => Object.fromEntries(souvenirs.map(s => [s.missionId, s])), [souvenirs]
+  )
 
   if (openCarnet) {
-    return <CarnetReader carnet={openCarnet} team={team} souvenir={null} onClose={() => setOpenCarnet(null)} />
+    const finalePage = openCarnet.pages.find(p => p.mission.mission_finale)
+    const trailSouvenir = finalePage ? souvenirByMission[finalePage.mission.id] : null
+    return (
+      <CarnetReader
+        carnet={openCarnet} team={team}
+        souvenir={trailSouvenir}
+        souvenirByMission={souvenirByMission}
+        onClose={() => setOpenCarnet(null)}
+      />
+    )
   }
 
   return (
@@ -136,7 +145,12 @@ export default function CarnetScreen({ collected = [], collectedAt = {}, team })
                 <div key={p.mission.id} className="rounded-2xl overflow-hidden"
                   style={{ border: '1px solid rgba(244,236,216,0.14)' }}>
                   <div style={{ aspectRatio: '3/4' }}>
-                    <MissionIllustration mission={p.mission} state="unlocked" />
+                    {p.mission.mission_finale && souvenirByMission[p.mission.id] ? (
+                      <img src={souvenirByMission[p.mission.id].dataUrl} alt={p.mission.titre}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <MissionIllustration mission={p.mission} state="unlocked" />
+                    )}
                   </div>
                   <div style={{ background: 'rgba(20,17,12,0.92)', padding: '7px 9px' }}>
                     <div style={{ ...S.label, color: '#b8862e', fontSize: 8 }}>{p.mission.categorie}</div>

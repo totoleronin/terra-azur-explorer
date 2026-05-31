@@ -5,7 +5,7 @@ import TrailDetailScreen from './screens/TrailDetailScreen'
 import TeamSetupScreen from './screens/TeamSetupScreen'
 import HikeScreen from './screens/HikeScreen'
 import MissionScreen from './screens/MissionScreen'
-import CollectionScreen from './screens/CollectionScreen'
+import CarnetScreen from './screens/CarnetScreen'
 import ProfilScreen from './screens/ProfilScreen'
 import AdminScreen from './screens/AdminScreen'
 
@@ -29,11 +29,23 @@ export default function App() {
     catch { return [] }
   })
 
+  // Horodatage des collectes (pour la « date de dernière mise à jour » du carnet)
+  const [collectedAt, setCollectedAt] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('terra.collectedAt') || '{}') }
+    catch { return {} }
+  })
+
   function collect(missionId) {
     setCollected(prev => {
       if (prev.includes(missionId)) return prev
       const next = [...prev, missionId]
       localStorage.setItem('collected', JSON.stringify(next))
+      return next
+    })
+    setCollectedAt(prev => {
+      if (prev[missionId]) return prev
+      const next = { ...prev, [missionId]: new Date().toISOString() }
+      localStorage.setItem('terra.collectedAt', JSON.stringify(next))
       return next
     })
   }
@@ -144,9 +156,9 @@ export default function App() {
         <ExploreScreen onViewTrail={goToTrailDetail} collected={collected} />
       </div>
 
-      {/* ── Collection ── */}
+      {/* ── Carnet ── */}
       <div className={`absolute inset-0 ${tab === 'collection' && screen === 'explore' ? 'block' : 'hidden'}`}>
-        <CollectionScreen collected={collected} />
+        <CarnetScreen collected={collected} collectedAt={collectedAt} team={team} />
       </div>
 
       {/* ── Profil ── */}

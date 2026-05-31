@@ -508,9 +508,9 @@ export default function TrailDetailScreen({ sentier, collected = [], onStart, on
             icon={<svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 10 L6 2 L10 10 Z" stroke="currentColor" strokeWidth="1.2" fill="none" /></svg>}
           />
           <StatTile
-            label="Missions"
-            value={`${missions.length}`}
-            icon={<svg width="10" height="10" viewBox="0 0 12 12"><path d="M6 1 L7.5 4.5 L11 5 L8.5 7.5 L9 11 L6 9 L3 11 L3.5 7.5 L1 5 L4.5 4.5 Z" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinejoin="round" /></svg>}
+            label="Dénivelé"
+            value={sentier.denivele_pos != null ? `↑ ${sentier.denivele_pos} m` : '—'}
+            icon={<svg width="10" height="10" viewBox="0 0 12 12"><path d="M1 10 L5 5 L7 7 L11 2" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" /><path d="M8.5 2 L11 2 L11 4.5" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>}
           />
         </div>
 

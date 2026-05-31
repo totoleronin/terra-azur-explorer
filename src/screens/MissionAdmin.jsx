@@ -227,6 +227,7 @@ export function MissionForm({ trail, initial, narrativeInitial, initialPos, onSa
     bonne_reponse: initial?.bonne_reponse ?? 0,
     indice:       initial?.indice       || '',
     image_url:    initial?.image_url    || '',
+    mission_finale: initial?.mission_finale ?? false,
   })
   const [narr, setNarr] = useState({
     page_number:  narrativeInitial?.page_number ?? '',
@@ -260,6 +261,7 @@ export function MissionForm({ trail, initial, narrativeInitial, initialPos, onSa
       rayon_metres: parseInt(form.rayon_metres) || 50,
       rayon_approche_metres: parseInt(form.rayon_approche_metres) || 200,
       bonne_reponse: parseInt(form.bonne_reponse) || 0,
+      mission_finale: !!form.mission_finale,
     }
 
     const narrPayload = narr.page_number !== '' ? {
@@ -393,6 +395,28 @@ export function MissionForm({ trail, initial, narrativeInitial, initialPos, onSa
             onChange={e => setField('rayon_approche_metres', e.target.value)} style={S.field} />
         </div>
       </div>
+
+      {/* ── Mission finale (photo souvenir) ── */}
+      <button type="button" onClick={() => setField('mission_finale', !form.mission_finale)}
+        className="w-full cursor-pointer flex items-center gap-3 mb-4 text-left"
+        style={{
+          background: form.mission_finale ? 'rgba(184,134,46,0.12)' : 'rgba(244,236,216,0.04)',
+          border: `1px solid ${form.mission_finale ? 'rgba(184,134,46,0.45)' : 'rgba(244,236,216,0.14)'}`,
+          borderRadius: 12, padding: '12px 14px',
+        }}>
+        <span style={{
+          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+          background: form.mission_finale ? '#b8862e' : 'transparent',
+          border: `1.5px solid ${form.mission_finale ? '#b8862e' : 'rgba(244,236,216,0.3)'}`,
+          color: '#1c1a14', display: 'grid', placeItems: 'center', fontSize: 14,
+        }}>{form.mission_finale ? '✓' : ''}</span>
+        <span>
+          <span style={{ color: '#f4ecd8', fontSize: 14, fontFamily: 'Inter, sans-serif' }}>📷 Mission finale (photo souvenir)</span>
+          <span style={{ display: 'block', color: '#8a7e6c', fontSize: 11, fontFamily: 'Inter, sans-serif', lineHeight: 1.4, marginTop: 2 }}>
+            Pas de quiz : l'explorateur prend une photo au point de vue, qui devient sa carte postale et la dernière page du carnet.
+          </span>
+        </span>
+      </button>
 
       {/* ── Texte mission ── */}
       <div className="mb-4">

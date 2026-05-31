@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { MissionIllustration } from '../components/Illustration'
 import NarrativePage from '../components/NarrativePage'
 import { useMissionNarrative, useTrailNarrative } from '../hooks/useNarrative'
+import { buildPostcard } from '../lib/postcard'
 
 const CATEGORY_EMOJI = { Plante: '🌿', Animal: '🦌', 'Géologie': '🪨', 'Point de vue': '🏔️' }
 
@@ -12,7 +13,8 @@ const OBSERVATION_LABEL = {
   orientation: '🧭 Repère-toi',
 }
 
-export default function MissionScreen({ mission, onComplete, onClose }) {
+export default function MissionScreen({ mission, trail: trailRow, team, onSouvenir, onComplete, onClose }) {
+  const isFinale = !!mission?.mission_finale
   const hasObservation = !!(mission?.observation_question)
   const [phase, setPhase] = useState(hasObservation ? 'observe' : 'discover')
   const [hintsShown, setHintsShown] = useState(0)
@@ -20,10 +22,68 @@ export default function MissionScreen({ mission, onComplete, onClose }) {
   const [observeShake, setObserveShake] = useState(false)
   const [observeWrong, setObserveWrong] = useState(false)
   const [observeSuccess, setObserveSuccess] = useState(false)
+  const [postcardUrl, setPostcardUrl] = useState(null)
+  const [building, setBuilding] = useState(false)
+  const photoInputRef = useRef(null)
   const narrative = useMissionNarrative(mission?.id)
   const trail = useTrailNarrative(mission?.sentier_id)
 
   if (!mission) return null
+
+  // ── Mission finale : capture de la photo souvenir ──
+  function handleFinalePhoto(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBuilding(true)
+    const reader = new FileReader()
+    reader.onload = async ev => {
+      const photoDataUrl = ev.target.result
+      const family = team?.name
+        ? `${team.name}${team.members?.length ? ' · ' + team.members.join(', ') : ''}`
+        : (team?.members?.join(', ') || null)
+      let postcard = photoDataUrl
+      try {
+        postcard = await buildPostcard({
+          photoDataUrl,
+          trailName: trailRow?.nom || '',
+          naturalistName: trail?.naturalist_name || null,
+          family,
+          date: new Date().toISOString(),
+        })
+      } catch { /* en cas d'échec canvas, on garde la photo brute */ }
+      setPostcardUrl(postcard)
+      setBuilding(false)
+      setPhase('finale-reveal')
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  function finishFinale() {
+    if (postcardUrl) {
+      onSouvenir?.({
+        missionId: mission.id,
+        trailId: mission.sentier_id,
+        dataUrl: postcardUrl,
+        date: new Date().toISOString(),
+        family: team?.name || null,
+      })
+    }
+    onComplete(mission.id)
+  }
+
+  async function sharePostcard() {
+    try {
+      const blob = await (await fetch(postcardUrl)).blob()
+      const file = new File([blob], 'souvenir-terra-azur.png', { type: 'image/png' })
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Mon souvenir Terra Azur' })
+      } else {
+        const a = document.createElement('a')
+        a.href = postcardUrl; a.download = 'souvenir-terra-azur.png'; a.click()
+      }
+    } catch { /* annulé */ }
+  }
 
   const choix = Array.isArray(mission.choix) ? mission.choix : JSON.parse(mission.choix || '[]')
   const observeChoix = Array.isArray(mission.observation_choix)
@@ -53,6 +113,43 @@ export default function MissionScreen({ mission, onComplete, onClose }) {
       setShake(true)
       setTimeout(() => setShake(false), 600)
     }
+  }
+
+  // ── FINALE : révélation de la carte postale souvenir ──
+  if (phase === 'finale-reveal') {
+    return (
+      <div className="absolute inset-0 z-[60] flex items-center justify-center p-5 font-body overflow-y-auto"
+        style={{ background: 'rgba(15,13,9,0.72)', animation: 'fadeIn .25s both' }}>
+        <div className="w-full rounded-[18px] p-5 text-center"
+          style={{ background: '#f4ecd8', border: '2px solid #2b2620', boxShadow: '4px 4px 0 #b8862e', animation: 'popIn .4s both' }}>
+          <div className="font-mono uppercase text-ink-mute mb-2" style={{ fontSize: 9, letterSpacing: 2 }}>
+            La page manquante du carnet
+          </div>
+          <div className="mx-auto mb-4 overflow-hidden rounded-2xl"
+            style={{ maxWidth: 300, border: '2px solid #2b2620', boxShadow: '3px 3px 0 #b8862e', animation: 'missionReveal 1.4s ease-out both' }}>
+            <img src={postcardUrl} alt="carte postale souvenir" style={{ width: '100%', display: 'block' }} />
+          </div>
+          <h2 className="m-0 mb-1.5 font-title font-bold text-ink leading-none" style={{ fontSize: 30 }}>
+            Ton souvenir est gravé
+          </h2>
+          <p className="m-0 mb-4 font-body text-ink-soft leading-snug" style={{ fontSize: 15 }}>
+            Cette photo rejoint la dernière page de ton carnet d'exploration.
+          </p>
+          <div className="flex gap-2.5">
+            <button onClick={sharePostcard}
+              className="flex-1 h-[50px] cursor-pointer font-title font-bold flex items-center justify-center gap-2"
+              style={{ background: '#f9f1de', color: '#2b2620', border: '2px solid #2b2620', borderRadius: 14, fontSize: 17, boxShadow: '3px 3px 0 #b8862e' }}>
+              ↗ Partager
+            </button>
+            <button onClick={finishFinale}
+              className="flex-1 h-[50px] cursor-pointer font-title font-bold flex items-center justify-center gap-2"
+              style={{ background: '#2b2620', color: '#f4ecd8', border: '2px solid #2b2620', borderRadius: 14, fontSize: 17, boxShadow: '3px 3px 0 #b8862e' }}>
+              Continuer
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // ── SUCCESS overlay ──
@@ -433,7 +530,7 @@ export default function MissionScreen({ mission, onComplete, onClose }) {
         )}
 
         {/* QUESTION CARD */}
-        {(phase === 'question' || phase === 'wrong' || phase === 'discover') && (
+        {!isFinale && (phase === 'question' || phase === 'wrong' || phase === 'discover') && (
           <div className="px-[18px] pb-3.5 animate-fadeUp">
             <div
               className="rounded-2xl px-4 py-3.5 relative"
@@ -483,7 +580,30 @@ export default function MissionScreen({ mission, onComplete, onClose }) {
           </div>
         )}
 
+        {/* FINALE : capture de la photo souvenir */}
+        {isFinale && (
+          <div className="px-[18px] pb-4 animate-fadeUp">
+            <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
+              style={{ display: 'none' }} onChange={handleFinalePhoto} />
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              disabled={building}
+              className="w-full cursor-pointer font-title font-bold flex items-center justify-center gap-2.5"
+              style={{
+                background: '#a14a3c', color: '#f4ecd8', border: '2px solid #2b2620',
+                borderRadius: 14, padding: '15px 0', fontSize: 20, boxShadow: '3px 3px 0 #b8862e',
+                opacity: building ? 0.7 : 1,
+              }}>
+              📷 {building ? 'Préparation…' : 'Prendre ma photo souvenir'}
+            </button>
+            <p className="m-0 mt-2.5 text-center font-body text-ink-soft leading-snug" style={{ fontSize: 13 }}>
+              Capture la vue depuis ce point. Elle deviendra ta carte postale et la dernière page du carnet.
+            </p>
+          </div>
+        )}
+
         {/* ANSWER BUTTONS */}
+        {!isFinale && (
         <div className="px-[18px] pb-4 flex flex-col gap-2.5 animate-fadeUp">
           {choix.map((c, i) => (
             <button
@@ -515,6 +635,7 @@ export default function MissionScreen({ mission, onComplete, onClose }) {
             </button>
           ))}
         </div>
+        )}
 
         {/* SECONDARY ACTIONS */}
         <div className="px-[18px] pb-4 flex gap-2">

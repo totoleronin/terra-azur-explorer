@@ -140,6 +140,8 @@ export default function App() {
             sentier={selectedTrail}
             missions={activeMissions}
             collected={collected}
+            team={team}
+            souvenirs={souvenirs}
             onBack={() => setScreen('trail-detail')}
             onUnlockMission={goToMission}
           />

@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { distanceMetres } from '../lib/geo'
 import { useMissionNarrative } from '../hooks/useNarrative'
 import { useWeather } from '../hooks/useWeather'
+import { buildRecap } from '../lib/recap'
 import { supabase } from '../lib/supabase'
 
 // ── Icônes Leaflet — cercle minimaliste + numéro de page ──────────────────────
@@ -209,7 +210,7 @@ function WeatherChip({ lat, lng }) {
 
 // ── HikeScreen ────────────────────────────────────────────────────────────────
 
-export default function HikeScreen({ sentier, missions, collected, onBack, onUnlockMission }) {
+export default function HikeScreen({ sentier, missions, collected, team, souvenirs = [], onBack, onUnlockMission }) {
   const [userPos,            setUserPos]            = useState(null)
   const [nearbyMission,      setNearbyMission]      = useState(null)
   const [approachingMission, setApproachingMission] = useState(null)
@@ -217,6 +218,10 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
   const [drawerOpen,         setDrawerOpen]         = useState(false)
   const [ttsPlaying,         setTtsPlaying]         = useState(false)
   const [expanded,           setExpanded]           = useState(false)
+  const [recapUrl,           setRecapUrl]           = useState(null)
+  const [recapFormat,        setRecapFormat]        = useState('stories')
+  const [recapPhoto,         setRecapPhoto]         = useState('illustration')
+  const [recapLoading,       setRecapLoading]       = useState(false)
   // Tracé frais depuis Supabase — remplace toujours la version en cache de l'app
   const [liveSentier,        setLiveSentier]        = useState(sentier)
 
@@ -625,15 +630,143 @@ export default function HikeScreen({ sentier, missions, collected, onBack, onUnl
           </div>
 
         ) : completedCount === missions.length ? (
-          /* ── TERMINÉ ── */
+          /* ── TERMINÉ + RÉCAP PARTAGEABLE ── */
           <div className="px-4 pb-6 pt-2 text-center">
             <div style={{ fontSize: 44 }}>🏆</div>
             <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 30, color: '#2b2620', marginTop: 8 }}>
               Sentier terminé !
             </div>
-            <p className="font-body m-0 mt-1" style={{ fontSize: 14, color: '#5a4f42' }}>
-              Toutes les missions ont été complétées.
+            <p className="font-body m-0 mt-1 mb-4" style={{ fontSize: 14, color: '#5a4f42' }}>
+              Toutes les découvertes ont été complétées. Partage ton exploration !
             </p>
+
+            {/* Choix de l'image */}
+            <div style={{ fontSize: 9, letterSpacing: 1.3, color: '#8a7e6c', fontFamily: 'Lora, serif', textTransform: 'uppercase', marginBottom: 6 }}>
+              ✦ Image du récap
+            </div>
+            <div className="flex gap-2 mb-3 justify-center">
+              {[
+                { id: 'illustration', label: '🏔 Illustration', desc: 'Affiche du sentier' },
+                { id: 'photo', label: '📷 Ma photo', desc: 'Photo souvenir' },
+              ].map(p => (
+                <button key={p.id}
+                  onClick={() => { setRecapPhoto(p.id); setRecapUrl(null) }}
+                  className="cursor-pointer flex-1 py-2 rounded-xl"
+                  style={{
+                    background: recapPhoto === p.id ? '#2b2620' : 'rgba(43,38,32,0.08)',
+                    color: recapPhoto === p.id ? '#f4ecd8' : '#5a4f42',
+                    border: `1.5px solid ${recapPhoto === p.id ? '#2b2620' : '#c9b78a'}`,
+                    fontFamily: 'Lora, serif', fontSize: 11, letterSpacing: 0.3,
+                  }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Choix de format */}
+            <div style={{ fontSize: 9, letterSpacing: 1.3, color: '#8a7e6c', fontFamily: 'Lora, serif', textTransform: 'uppercase', marginBottom: 6 }}>
+              ✦ Format
+            </div>
+            <div className="flex gap-2 mb-3 justify-center">
+              {[
+                { id: 'stories', label: 'Stories', ratio: '9:16' },
+                { id: 'square',  label: 'Carré',   ratio: '1:1' },
+              ].map(f => (
+                <button key={f.id}
+                  onClick={() => { setRecapFormat(f.id); setRecapUrl(null) }}
+                  className="cursor-pointer flex-1 py-2 rounded-xl"
+                  style={{
+                    background: recapFormat === f.id ? '#2b2620' : 'rgba(43,38,32,0.08)',
+                    color: recapFormat === f.id ? '#f4ecd8' : '#5a4f42',
+                    border: `1.5px solid ${recapFormat === f.id ? '#2b2620' : '#c9b78a'}`,
+                    fontFamily: 'Lora, serif', fontSize: 11, letterSpacing: 0.3,
+                  }}>
+                  {f.label} <span style={{ opacity: 0.5, fontSize: 9 }}>{f.ratio}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Aperçu */}
+            {recapUrl && (
+              <div className="mb-3 flex justify-center">
+                <img src={recapUrl} alt="Récap"
+                  style={{
+                    maxHeight: 280, borderRadius: 12,
+                    border: '2px solid #c9b78a',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                  }} />
+              </div>
+            )}
+
+            {/* Boutons */}
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setRecapLoading(true)
+                  const familyLine = team?.name
+                    ? `${team.name}${team.members?.length ? ' · ' + team.members.join(', ') : ''}`
+                    : null
+
+                  let photoUrl = null
+                  if (recapPhoto === 'photo') {
+                    const finale = missions.find(m => m.mission_finale)
+                    photoUrl = finale
+                      ? souvenirs.find(s => s.missionId === finale.id)?.dataUrl
+                      : null
+                  } else {
+                    photoUrl = `/illustrations/trails/${liveSentier.id}.png`
+                  }
+
+                  const url = await buildRecap({
+                    format: recapFormat,
+                    trailName: liveSentier.nom,
+                    distance: liveSentier.distance_km,
+                    duree: liveSentier.duree,
+                    denivele: liveSentier.denivele_pos,
+                    missionsCount: missions.length,
+                    family: familyLine,
+                    date: new Date().toISOString(),
+                    elapsed: elapsedLabel,
+                    photoDataUrl: photoUrl,
+                  })
+                  setRecapUrl(url)
+                  setRecapLoading(false)
+                }}
+                disabled={recapLoading}
+                className="flex-1 cursor-pointer flex items-center justify-center gap-2 font-title"
+                style={{
+                  height: 48, background: '#b8862e', color: '#f4ecd8',
+                  border: 'none', borderRadius: 12, fontSize: 18,
+                  fontFamily: "'Bebas Neue', sans-serif",
+                  opacity: recapLoading ? 0.6 : 1,
+                }}>
+                {recapLoading ? '⏳' : '🖼'} {recapUrl ? 'Regénérer' : 'Créer mon récap'}
+              </button>
+
+              {recapUrl && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const resp = await fetch(recapUrl)
+                      const blob = await resp.blob()
+                      const file = new File([blob], `recap-${liveSentier.id || 'terra'}.png`, { type: 'image/png' })
+                      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+                        await navigator.share({ files: [file], title: `Mon exploration — ${liveSentier.nom}` })
+                      } else {
+                        const a = document.createElement('a')
+                        a.href = recapUrl; a.download = file.name; a.click()
+                      }
+                    } catch {}
+                  }}
+                  className="flex-none w-12 cursor-pointer grid place-items-center rounded-xl"
+                  style={{
+                    height: 48, background: '#2b2620', color: '#f4ecd8',
+                    border: 'none', fontSize: 20,
+                  }}>
+                  ↗
+                </button>
+              )}
+            </div>
           </div>
 
         ) : null}
